@@ -27,7 +27,7 @@ gem "tzinfo-data", platforms: %i[ windows jruby ]
 gem "redis", "~> 5.0"
 
 # Use Sidekiq for background jobs
-gem "sidekiq", "~> 7.3"
+gem "sidekiq", "~> 8.0"
 gem "sidekiq-scheduler" # seconds-level schedules like every 15s
 
 # HTTP client for API requests
