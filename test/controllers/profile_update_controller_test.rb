@@ -211,16 +211,42 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "update validates address fields when editing address" do
-    # Authenticate first
+  test "update allows editing one address field when others already stored" do
     authenticate_user
-    
-    LoopsService.stub(:find_contact, ->(**args) { [@mock_contact] }) do
-      # Try to update only addressLine1 without other required fields
+
+    with_loops_http_stub do
+      with_capture_update do |captured|
+        silence_audit_side_effects do
+          patch profile_path, params: {
+            addressLine1: "456 New St"
+          }
+
+          assert_redirected_to profile_edit_path
+          follow_redirect! if response.redirect?
+          assert_nil flash[:error]
+          assert_equal 1, captured.size
+          assert_equal "456 New St", captured.first[:payload]["addressLine1"]
+        end
+      end
+    end
+  end
+
+  test "update validates address fields when no address previously stored" do
+    authenticate_user
+
+    no_address_contact = @mock_contact.merge(
+      "addressLine1" => nil,
+      "addressCity" => nil,
+      "addressState" => nil,
+      "addressZipCode" => nil,
+      "addressCountry" => nil
+    )
+
+    LoopsService.stub(:find_contact, ->(**args) { [no_address_contact] }) do
       patch profile_path, params: {
         addressLine1: "456 New St"
       }
-      
+
       assert_redirected_to profile_edit_path
       assert_match(/required/i, flash[:error])
     end

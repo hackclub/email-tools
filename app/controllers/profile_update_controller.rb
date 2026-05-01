@@ -120,7 +120,7 @@ class ProfileUpdateController < ApplicationController
     # Note: addressLine2 can be edited independently without requiring other fields
     required_address_fields_edited = fields_to_update.keys.any? { |k| REQUIRED_ADDRESS_FIELDS.include?(k) }
     if required_address_fields_edited
-      missing_required = REQUIRED_ADDRESS_FIELDS.reject { |field| fields_to_update.key?(field) }
+      missing_required = REQUIRED_ADDRESS_FIELDS.reject { |field| fields_to_update.key?(field) || current_profile[field].present? }
       if missing_required.any?
         flash[:error] = "If editing address, the following fields are required: #{missing_required.join(', ')}"
         redirect_to profile_edit_path
