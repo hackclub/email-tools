@@ -1,5 +1,4 @@
 require "test_helper"
-require "minitest/mock"
 
 class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   def setup
@@ -60,6 +59,22 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  def with_singleton_method_stub(object, method_name, replacement)
+    original = object.method(method_name)
+
+    object.define_singleton_method(method_name) do |*args, **kwargs, &block|
+      if replacement.respond_to?(:call)
+        replacement.call(*args, **kwargs, &block)
+      else
+        replacement
+      end
+    end
+
+    yield
+  ensure
+    object.define_singleton_method(method_name, original)
+  end
+
   def with_loops_http_stub
     contact_body = JSON.generate([ @mock_contact ])
     update_body = JSON.generate(@mock_update_response)
@@ -72,7 +87,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
       SimpleHttpResponse.new(status: 200, body: update_body)
     end
 
-    LoopsService.stub(:http_client, http_client) do
+    with_singleton_method_stub(LoopsService, :http_client, http_client) do
       yield
     end
   end
@@ -131,8 +146,8 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     code = AuthenticationService.generate_otp(@email)
 
     # Request OTP (sets session[:otp_email])
-    LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      AuthenticationService.stub(:generate_otp, ->(email) { code }) do
+    with_singleton_method_stub(LoopsService, :send_transactional_email, ->(*args) { { "success" => true } }) do
+      with_singleton_method_stub(AuthenticationService, :generate_otp, ->(email) { code }) do
         post auth_otp_request_path, params: { email: @email }
       end
     end
@@ -180,8 +195,8 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   test "full flow: request OTP, verify, edit profile, update profile" do
     # Step 1: Request OTP
     code = AuthenticationService.generate_otp(@email)
-    LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      AuthenticationService.stub(:generate_otp, ->(email) { code }) do
+    with_singleton_method_stub(LoopsService, :send_transactional_email, ->(*args) { { "success" => true } }) do
+      with_singleton_method_stub(AuthenticationService, :generate_otp, ->(email) { code }) do
         post auth_otp_request_path, params: { email: @email }
         assert_redirected_to auth_otp_verify_path
       end
@@ -231,6 +246,30 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  test "update allows partial address changes when unchanged required fields are resubmitted" do
+    authenticate_user
+
+    with_loops_http_stub do
+      with_capture_update do |captured|
+        silence_audit_side_effects do
+          patch profile_path, params: {
+            addressLine1: "456 New St",
+            addressCity: "Springfield",
+            addressState: "IL",
+            addressZipCode: "62701",
+            addressCountry: "USA"
+          }
+
+          assert_redirected_to profile_edit_path
+          follow_redirect! if response.redirect?
+          assert_nil flash[:error]
+          assert_equal 1, captured.size
+          assert_equal({ "addressLine1" => "456 New St" }, captured.first[:payload])
+        end
+      end
+    end
+  end
+
   test "update validates address fields when no address previously stored" do
     authenticate_user
 
@@ -242,7 +281,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
       "addressCountry" => nil
     )
 
-    LoopsService.stub(:find_contact, ->(**args) { [ no_address_contact ] }) do
+    with_singleton_method_stub(LoopsService, :find_contact, ->(**args) { [ no_address_contact ] }) do
       patch profile_path, params: {
         addressLine1: "456 New St"
       }
@@ -283,7 +322,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     # Authenticate first
     authenticate_user
 
-    LoopsService.stub(:find_contact, ->(**args) { [ @mock_contact ] }) do
+    with_singleton_method_stub(LoopsService, :find_contact, ->(**args) { [ @mock_contact ] }) do
       # Try to update only year
       patch profile_path, params: {
         birthdayYear: "1991",
@@ -300,7 +339,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     # Authenticate first
     authenticate_user
 
-    LoopsService.stub(:find_contact, ->(**args) { [ @mock_contact ] }) do
+    with_singleton_method_stub(LoopsService, :find_contact, ->(**args) { [ @mock_contact ] }) do
       # Invalid date
       patch profile_path, params: {
         birthdayYear: "1990",
@@ -317,7 +356,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     # Authenticate first
     authenticate_user
 
-    LoopsService.stub(:find_contact, ->(**args) { [ @mock_contact ] }) do
+    with_singleton_method_stub(LoopsService, :find_contact, ->(**args) { [ @mock_contact ] }) do
       # Submit form with all same values
       patch profile_path, params: {
         firstName: "John",
@@ -365,7 +404,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     nonstandard_contact = @mock_contact.dup
     nonstandard_contact["genderSelfReported"] = "she/her"
 
-    LoopsService.stub(:find_contact, ->(**args) { [ nonstandard_contact ] }) do
+    with_singleton_method_stub(LoopsService, :find_contact, ->(**args) { [ nonstandard_contact ] }) do
       with_capture_update do |captured|
         silence_audit_side_effects do
           # Submit form with empty genderSelfReported (form can't match nonstandard value)
@@ -398,7 +437,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     contact_with_male = @mock_contact.dup
     contact_with_male["genderSelfReported"] = "male"
 
-    LoopsService.stub(:find_contact, ->(**args) { [ contact_with_male ] }) do
+    with_singleton_method_stub(LoopsService, :find_contact, ->(**args) { [ contact_with_male ] }) do
       with_capture_update do |captured|
         silence_audit_side_effects do
           # Change gender from male to female
@@ -422,31 +461,33 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     # Authenticate first
     authenticate_user
 
-    with_capture_update do |captured|
-      silence_audit_side_effects do
-        # Submit form with only firstName set, others blank
-        patch profile_path, params: {
-          firstName: "Jane",
-          lastName: "",
-          genderSelfReported: "",
-          addressLine1: "",
-          addressCity: "",
-          addressState: "",
-          addressZipCode: "",
-          addressCountry: ""
-        }
+    with_singleton_method_stub(LoopsService, :find_contact, ->(**args) { [ @mock_contact ] }) do
+      with_capture_update do |captured|
+        silence_audit_side_effects do
+          # Submit form with only firstName set, others blank
+          patch profile_path, params: {
+            firstName: "Jane",
+            lastName: "",
+            genderSelfReported: "",
+            addressLine1: "",
+            addressCity: "",
+            addressState: "",
+            addressZipCode: "",
+            addressCountry: ""
+          }
 
-        assert_redirected_to profile_edit_path
-        follow_redirect! if response.redirect?
-        assert_nil flash[:error]
+          assert_redirected_to profile_edit_path
+          follow_redirect! if response.redirect?
+          assert_nil flash[:error]
 
-        # Verify only firstName is in the payload (non-blank values only)
-        assert_equal 1, captured.size
-        payload = captured.first[:payload]
-        assert_equal "Jane", payload["firstName"]
-        assert_nil payload["lastName"], "Blank lastName should not be included"
-        assert_nil payload["genderSelfReported"], "Blank genderSelfReported should not be included"
-        assert_nil payload["addressLine1"], "Blank addressLine1 should not be included"
+          # Verify only firstName is in the payload (non-blank values only)
+          assert_equal 1, captured.size
+          payload = captured.first[:payload]
+          assert_equal "Jane", payload["firstName"]
+          assert_nil payload["lastName"], "Blank lastName should not be included"
+          assert_nil payload["genderSelfReported"], "Blank genderSelfReported should not be included"
+          assert_nil payload["addressLine1"], "Blank addressLine1 should not be included"
+        end
       end
     end
   end
