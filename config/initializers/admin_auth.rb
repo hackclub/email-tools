@@ -1,10 +1,10 @@
 # Validate that required admin authentication environment variables are set
 # Skip during asset precompilation (assets don't need these env vars)
 def asset_precompilation?
-  return true if ENV['RAILS_GROUPS'] == 'assets'
+  return true if ENV["RAILS_GROUPS"] == "assets"
   return false unless defined?(Rake)
   begin
-    Rake.application&.top_level_tasks&.any? { |task| task.to_s.include?('assets:precompile') } || false
+    Rake.application&.top_level_tasks&.any? { |task| task.to_s.include?("assets:precompile") } || false
   rescue NoMethodError, NameError
     false
   end
@@ -32,8 +32,3 @@ unless skip_validation
     ERROR
   end
 end
-
-
-
-
-

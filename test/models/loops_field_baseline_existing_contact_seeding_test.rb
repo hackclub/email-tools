@@ -28,7 +28,7 @@ class LoopsFieldBaselineExistingContactSeedingTest < ActiveSupport::TestCase
     }
 
     # Simulate checking contact existence and loading baselines
-    LoopsService.stub :find_contact, [contact_hash] do
+    LoopsService.stub :find_contact, [ contact_hash ] do
       result = LoopsFieldBaseline.check_contact_existence_and_load_baselines(email_normalized: @email_normalized)
       assert_equal true, result
     end
@@ -52,7 +52,7 @@ class LoopsFieldBaselineExistingContactSeedingTest < ActiveSupport::TestCase
     }
 
     # First call - creates baselines and subscriptions
-    LoopsService.stub :find_contact, [contact_hash] do
+    LoopsService.stub :find_contact, [ contact_hash ] do
       LoopsFieldBaseline.check_contact_existence_and_load_baselines(email_normalized: @email_normalized)
     end
 
@@ -76,7 +76,7 @@ class LoopsFieldBaselineExistingContactSeedingTest < ActiveSupport::TestCase
       "mailingLists" => {}
     }
 
-    LoopsService.stub :find_contact, [contact_hash] do
+    LoopsService.stub :find_contact, [ contact_hash ] do
       result = LoopsFieldBaseline.check_contact_existence_and_load_baselines(email_normalized: @email_normalized)
       assert_equal true, result
     end
@@ -93,7 +93,7 @@ class LoopsFieldBaselineExistingContactSeedingTest < ActiveSupport::TestCase
       # No mailingLists key
     }
 
-    LoopsService.stub :find_contact, [contact_hash] do
+    LoopsService.stub :find_contact, [ contact_hash ] do
       result = LoopsFieldBaseline.check_contact_existence_and_load_baselines(email_normalized: @email_normalized)
       assert_equal true, result
     end
@@ -131,10 +131,9 @@ class LoopsFieldBaselineExistingContactSeedingTest < ActiveSupport::TestCase
     assert_equal initial_count, LoopsListSubscription.where(email_normalized: @email_normalized).count
     assert_equal 1, LoopsListSubscription.where(email_normalized: @email_normalized).count
     assert LoopsListSubscription.exists?(email_normalized: @email_normalized, list_id: "list1")
-    
+
     # Original subscription should be preserved
     existing_sub.reload
     assert_equal 2.hours.ago.to_i, existing_sub.subscribed_at.to_i, "Subscription timestamp should be preserved (within 1 second tolerance)"
   end
 end
-

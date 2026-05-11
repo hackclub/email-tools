@@ -44,7 +44,7 @@ class LoopsListSubscriptionTest < ActiveSupport::TestCase
       list_id: @list_id,
       subscribed_at: Time.current
     )
-    
+
     duplicate = LoopsListSubscription.new(
       email_normalized: @email,
       list_id: @list_id,
@@ -60,7 +60,7 @@ class LoopsListSubscriptionTest < ActiveSupport::TestCase
       list_id: @list_id,
       subscribed_at: Time.current
     )
-    
+
     assert_not_nil subscription.id
     assert_equal @email, subscription.email_normalized
     assert_equal @list_id, subscription.list_id
@@ -72,15 +72,14 @@ class LoopsListSubscriptionTest < ActiveSupport::TestCase
       list_id: @list_id,
       subscribed_at: Time.current
     )
-    
+
     different_list = LoopsListSubscription.create!(
       email_normalized: @email,
       list_id: "list456",
       subscribed_at: Time.current
     )
-    
+
     assert_not_nil different_list.id
     assert_equal 2, LoopsListSubscription.where(email_normalized: @email).count
   end
 end
-

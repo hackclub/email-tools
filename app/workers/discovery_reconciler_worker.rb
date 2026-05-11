@@ -9,5 +9,3 @@ class DiscoveryReconcilerWorker
     DiscoveryReconciler.new(adapters: adapters).call
   end
 end
-
-

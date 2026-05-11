@@ -31,7 +31,7 @@ class SyncLoopsListsWorkerTest < ActiveJob::TestCase
     end
 
     assert_equal 2, LoopsList.count
-    
+
     list1 = LoopsList.find_by(loops_list_id: "list1")
     assert_not_nil list1
     assert_equal "Beta Users", list1.name
@@ -122,4 +122,3 @@ class SyncLoopsListsWorkerTest < ActiveJob::TestCase
     assert_equal 0, LoopsList.count
   end
 end
-

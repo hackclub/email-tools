@@ -4,13 +4,13 @@ require "minitest/mock"
 class AltsControllerTest < ActionDispatch::IntegrationTest
   def setup
     skip "Redis not available" unless REDIS_FOR_RATE_LIMITING.ping
-    
+
     @email = "zach@hackclub.com"
     @email_normalized = EmailNormalizer.normalize(@email)
-    
+
     # Clear rate limits before each test
     REDIS_FOR_RATE_LIMITING.del("rate:otp:#{@email_normalized}")
-    
+
     # Clean up any existing data
     OtpVerification.where(email_normalized: @email_normalized).delete_all
     AuthenticatedSession.where(email_normalized: @email_normalized).delete_all
@@ -26,14 +26,14 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
   def authenticate_user
     # Generate OTP code first
     code = AuthenticationService.generate_otp(@email)
-    
+
     # Request OTP (sets session[:otp_email])
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
       AuthenticationService.stub(:generate_otp, ->(email) { code }) do
         post auth_otp_request_path, params: { email: @email }
       end
     end
-    
+
     # Verify OTP (sets session[:auth_token])
     post auth_otp_verify_path, params: { code: code }
     # Clear flash after authentication by following redirect
@@ -47,9 +47,9 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "index shows found subscribed alt emails" do
     authenticate_user
-    
+
     mock_alts = {
-      subscribed: ["zach+test@hackclub.com", "zach+test2@hackclub.com"],
+      subscribed: [ "zach+test@hackclub.com", "zach+test2@hackclub.com" ],
       unsubscribed: []
     }
     AltFinderService.stub(:call, mock_alts) do
@@ -62,10 +62,10 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "index shows unsubscribed alt emails" do
     authenticate_user
-    
+
     mock_alts = {
       subscribed: [],
-      unsubscribed: ["zach+old@hackclub.com", "zach+unsubscribed@hackclub.com"]
+      unsubscribed: [ "zach+old@hackclub.com", "zach+unsubscribed@hackclub.com" ]
     }
     AltFinderService.stub(:call, mock_alts) do
       get alts_path
@@ -78,10 +78,10 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "index shows both subscribed and unsubscribed alt emails" do
     authenticate_user
-    
+
     mock_alts = {
-      subscribed: ["zach+test@hackclub.com"],
-      unsubscribed: ["zach+old@hackclub.com"]
+      subscribed: [ "zach+test@hackclub.com" ],
+      unsubscribed: [ "zach+old@hackclub.com" ]
     }
     AltFinderService.stub(:call, mock_alts) do
       get alts_path
@@ -93,7 +93,7 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "index shows message when no alts found" do
     authenticate_user
-    
+
     AltFinderService.stub(:call, { subscribed: [], unsubscribed: [] }) do
       get alts_path
       assert_response :success
@@ -103,7 +103,7 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "index handles AltFinderService errors gracefully" do
     authenticate_user
-    
+
     AltFinderService.stub(:call, ->(main_email:) { raise "Database error" }) do
       get alts_path
       assert_response :success
@@ -114,15 +114,15 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "unsubscribe requires authentication" do
-    post alts_unsubscribe_path, params: { alts: ["zach+test@hackclub.com"] }
+    post alts_unsubscribe_path, params: { alts: [ "zach+test@hackclub.com" ] }
     assert_redirected_to auth_otp_request_path
   end
 
   test "unsubscribe enqueues job with valid alts" do
     authenticate_user
-    
-    verified_alts = ["zach+test@hackclub.com", "zach+test2@hackclub.com"]
-    
+
+    verified_alts = [ "zach+test@hackclub.com", "zach+test2@hackclub.com" ]
+
     MassUnsubscribeJob.stub(:perform_async, ->(main_email, alts) {
       assert_equal @email, main_email
       assert_equal verified_alts, alts
@@ -136,10 +136,10 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "unsubscribe filters out invalid alt emails" do
     authenticate_user
-    
-    valid_alts = ["zach+test@hackclub.com"]
-    invalid_alts = ["other@example.com", "notanalt@hackclub.com"]
-    
+
+    valid_alts = [ "zach+test@hackclub.com" ]
+    invalid_alts = [ "other@example.com", "notanalt@hackclub.com" ]
+
     MassUnsubscribeJob.stub(:perform_async, ->(main_email, alts) {
       assert_equal @email, main_email
       assert_equal valid_alts, alts
@@ -152,9 +152,9 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "unsubscribe rejects non-plus-alias emails" do
     authenticate_user
-    
-    invalid_alts = ["other@example.com"]
-    
+
+    invalid_alts = [ "other@example.com" ]
+
     post alts_unsubscribe_path, params: { alts: invalid_alts }
     assert_redirected_to alts_path
     assert_match(/No valid \+alt emails/, flash[:error])
@@ -162,9 +162,9 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "unsubscribe rejects alts from different domain" do
     authenticate_user
-    
-    invalid_alts = ["zach+test@example.com"] # Different domain
-    
+
+    invalid_alts = [ "zach+test@example.com" ] # Different domain
+
     post alts_unsubscribe_path, params: { alts: invalid_alts }
     assert_redirected_to alts_path
     assert_match(/No valid \+alt emails/, flash[:error])
@@ -172,9 +172,9 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "unsubscribe rejects alts from different user" do
     authenticate_user
-    
-    invalid_alts = ["other+test@hackclub.com"] # Different user part
-    
+
+    invalid_alts = [ "other+test@hackclub.com" ] # Different user part
+
     post alts_unsubscribe_path, params: { alts: invalid_alts }
     assert_redirected_to alts_path
     assert_match(/No valid \+alt emails/, flash[:error])
@@ -182,7 +182,7 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "unsubscribe handles empty alts array" do
     authenticate_user
-    
+
     post alts_unsubscribe_path, params: { alts: [] }
     assert_redirected_to alts_path
     assert_match(/No valid \+alt emails/, flash[:error])
@@ -190,21 +190,18 @@ class AltsControllerTest < ActionDispatch::IntegrationTest
 
   test "unsubscribe validates plus-alias pattern strictly" do
     authenticate_user
-    
+
     # These should all be rejected
     invalid_cases = [
       "zach@hackclub.com", # No plus
       "zach+@hackclub.com", # Plus but no alias part
-      "zach+test", # No domain
+      "zach+test" # No domain
     ]
-    
+
     invalid_cases.each do |invalid_alt|
-      post alts_unsubscribe_path, params: { alts: [invalid_alt] }
+      post alts_unsubscribe_path, params: { alts: [ invalid_alt ] }
       assert_redirected_to alts_path
       assert_match(/No valid \+alt emails/, flash[:error])
     end
   end
 end
-
-
-

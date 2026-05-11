@@ -54,4 +54,3 @@ class DiscoveryReconcilerWorkerTest < ActiveSupport::TestCase
     end
   end
 end
-

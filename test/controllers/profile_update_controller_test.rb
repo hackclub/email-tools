@@ -4,18 +4,18 @@ require "minitest/mock"
 class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   def setup
     skip "Redis not available" unless REDIS_FOR_RATE_LIMITING.ping
-    
+
     @email = "test@example.com"
     @email_normalized = EmailNormalizer.normalize(@email)
-    
+
     # Clear rate limits before each test
     REDIS_FOR_RATE_LIMITING.del("rate:otp:#{@email_normalized}")
-    
+
     # Clean up any existing data
     OtpVerification.where(email_normalized: @email_normalized).delete_all
     AuthenticatedSession.where(email_normalized: @email_normalized).delete_all
     LoopsContactChangeAudit.where(email_normalized: @email_normalized).delete_all
-    
+
     # Mock LoopsService responses
     @mock_contact = {
       "firstName" => "John",
@@ -29,9 +29,9 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
       "addressZipCode" => "62701",
       "addressCountry" => "USA"
     }
-    
+
     @mock_update_response = { "success" => true, "id" => "test_id_123" }
-    
+
     # Set test transactional ID
     @original_transactional_id = ENV["LOOPS_OTP_TRANSACTIONAL_ID"]
     ENV["LOOPS_OTP_TRANSACTIONAL_ID"] = "test_transactional_id"
@@ -61,7 +61,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   end
 
   def with_loops_http_stub
-    contact_body = JSON.generate([@mock_contact])
+    contact_body = JSON.generate([ @mock_contact ])
     update_body = JSON.generate(@mock_update_response)
 
     http_client = Object.new
@@ -121,7 +121,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     OtpVerification.where(email_normalized: @email_normalized).delete_all
     AuthenticatedSession.where(email_normalized: @email_normalized).delete_all
     LoopsContactChangeAudit.where(email_normalized: @email_normalized).delete_all
-    
+
     ENV["LOOPS_OTP_TRANSACTIONAL_ID"] = @original_transactional_id if @original_transactional_id
   end
 
@@ -129,14 +129,14 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   def authenticate_user
     # Generate OTP code first
     code = AuthenticationService.generate_otp(@email)
-    
+
     # Request OTP (sets session[:otp_email])
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
       AuthenticationService.stub(:generate_otp, ->(email) { code }) do
         post auth_otp_request_path, params: { email: @email }
       end
     end
-    
+
     # Verify OTP (sets session[:auth_token])
     post auth_otp_verify_path, params: { code: code }
     # Clear flash after authentication by following redirect
@@ -146,18 +146,18 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   # Helper to set up LoopsService stubs for update tests
   def with_loops_service_stubs
     mock_response = @mock_update_response.dup
-    mock_contact_array = [@mock_contact]
+    mock_contact_array = [ @mock_contact ]
     original_update_contact = LoopsService.method(:update_contact)
     original_find_contact = LoopsService.method(:find_contact)
-    
+
     LoopsService.define_singleton_method(:update_contact) do |email:, **kwargs|
       mock_response
     end
-    
+
     LoopsService.define_singleton_method(:find_contact) do |**args|
       mock_contact_array
     end
-    
+
     begin
       yield
     ensure
@@ -186,12 +186,12 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
         assert_redirected_to auth_otp_verify_path
       end
     end
-    
+
     # Step 2: Verify OTP
     post auth_otp_verify_path, params: { code: code }
     assert_redirected_to profile_edit_path
     follow_redirect! # Clear flash
-    
+
     with_loops_http_stub do
       # Step 3: Edit profile (should load data)
       get profile_edit_path
@@ -242,7 +242,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
       "addressCountry" => nil
     )
 
-    LoopsService.stub(:find_contact, ->(**args) { [no_address_contact] }) do
+    LoopsService.stub(:find_contact, ->(**args) { [ no_address_contact ] }) do
       patch profile_path, params: {
         addressLine1: "456 New St"
       }
@@ -255,7 +255,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   test "update allows editing addressLine2 independently" do
     # Authenticate first
     authenticate_user
-    
+
     with_loops_http_stub do
       with_capture_update do |captured|
         silence_audit_side_effects do
@@ -266,7 +266,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
             birthdayMonth: "",
             birthdayDay: ""
           }
-          
+
           assert_redirected_to profile_edit_path
           follow_redirect! if response.redirect?
           assert_nil flash[:error]
@@ -282,15 +282,15 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   test "update validates birthday fields" do
     # Authenticate first
     authenticate_user
-    
-    LoopsService.stub(:find_contact, ->(**args) { [@mock_contact] }) do
+
+    LoopsService.stub(:find_contact, ->(**args) { [ @mock_contact ] }) do
       # Try to update only year
       patch profile_path, params: {
         birthdayYear: "1991",
         birthdayMonth: "",
         birthdayDay: ""
       }
-      
+
       assert_redirected_to profile_edit_path
       assert_match(/all fields.*required/i, flash[:error])
     end
@@ -299,15 +299,15 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   test "update validates birthday date" do
     # Authenticate first
     authenticate_user
-    
-    LoopsService.stub(:find_contact, ->(**args) { [@mock_contact] }) do
+
+    LoopsService.stub(:find_contact, ->(**args) { [ @mock_contact ] }) do
       # Invalid date
       patch profile_path, params: {
         birthdayYear: "1990",
         birthdayMonth: "13", # Invalid month
         birthdayDay: "32" # Invalid day
       }
-      
+
       assert_redirected_to profile_edit_path
       assert_match(/Invalid date/i, flash[:error])
     end
@@ -316,8 +316,8 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   test "update shows no changes message when nothing changed" do
     # Authenticate first
     authenticate_user
-    
-    LoopsService.stub(:find_contact, ->(**args) { [@mock_contact] }) do
+
+    LoopsService.stub(:find_contact, ->(**args) { [ @mock_contact ] }) do
       # Submit form with all same values
       patch profile_path, params: {
         firstName: "John",
@@ -327,7 +327,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
         birthdayMonth: "1",
         birthdayDay: "15"
       }
-      
+
       assert_redirected_to profile_edit_path
       assert_equal "No changes detected", flash[:notice]
     end
@@ -336,18 +336,18 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   test "update creates audit log with is_self_service flag" do
     # Authenticate first
     authenticate_user
-    
+
     with_loops_http_stub do
       patch profile_path, params: { firstName: "Jane" }
-      
+
       # Verify the response was successful
       assert_redirected_to profile_edit_path
       follow_redirect! if response.redirect?
       assert_nil flash[:error], "Update should succeed, but got error: #{flash[:error]}"
-      
+
       # Wait a moment for async operations if any
       sleep 0.1
-      
+
       audit = LoopsContactChangeAudit.where(email_normalized: @email_normalized).last
       assert_not_nil audit, "Audit log should be created"
       assert_equal "firstName", audit.field_name
@@ -360,12 +360,12 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   test "update preserves nonstandard gender value when form submits empty" do
     # Authenticate first
     authenticate_user
-    
+
     # Set up a contact with a nonstandard gender value
     nonstandard_contact = @mock_contact.dup
     nonstandard_contact["genderSelfReported"] = "she/her"
-    
-    LoopsService.stub(:find_contact, ->(**args) { [nonstandard_contact] }) do
+
+    LoopsService.stub(:find_contact, ->(**args) { [ nonstandard_contact ] }) do
       with_capture_update do |captured|
         silence_audit_side_effects do
           # Submit form with empty genderSelfReported (form can't match nonstandard value)
@@ -374,16 +374,16 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
             firstName: "Jane",
             genderSelfReported: "" # Empty because form can't match "she/her"
           }
-          
+
           assert_redirected_to profile_edit_path
           follow_redirect! if response.redirect?
           assert_nil flash[:error]
-          
+
           # Verify that genderSelfReported was NOT included in the update payload
           assert_equal 1, captured.size
           assert_equal "test@example.com", captured.first[:email]
           assert_equal "Jane", captured.first[:payload]["firstName"]
-          assert_nil captured.first[:payload]["genderSelfReported"], 
+          assert_nil captured.first[:payload]["genderSelfReported"],
             "genderSelfReported should not be included in update when form submits empty for nonstandard value"
         end
       end
@@ -393,23 +393,23 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   test "update includes standard gender value when changed" do
     # Authenticate first
     authenticate_user
-    
+
     # Set up a contact with a standard gender value
     contact_with_male = @mock_contact.dup
     contact_with_male["genderSelfReported"] = "male"
-    
-    LoopsService.stub(:find_contact, ->(**args) { [contact_with_male] }) do
+
+    LoopsService.stub(:find_contact, ->(**args) { [ contact_with_male ] }) do
       with_capture_update do |captured|
         silence_audit_side_effects do
           # Change gender from male to female
           patch profile_path, params: {
             genderSelfReported: "female"
           }
-          
+
           assert_redirected_to profile_edit_path
           follow_redirect! if response.redirect?
           assert_nil flash[:error]
-          
+
           # Verify that genderSelfReported WAS included in the update payload
           assert_equal 1, captured.size
           assert_equal "female", captured.first[:payload]["genderSelfReported"]
@@ -421,7 +421,7 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
   test "update does not include blank fields in payload" do
     # Authenticate first
     authenticate_user
-    
+
     with_capture_update do |captured|
       silence_audit_side_effects do
         # Submit form with only firstName set, others blank
@@ -435,11 +435,11 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
           addressZipCode: "",
           addressCountry: ""
         }
-        
+
         assert_redirected_to profile_edit_path
         follow_redirect! if response.redirect?
         assert_nil flash[:error]
-        
+
         # Verify only firstName is in the payload (non-blank values only)
         assert_equal 1, captured.size
         payload = captured.first[:payload]

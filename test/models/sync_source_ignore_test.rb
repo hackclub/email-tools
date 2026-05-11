@@ -146,7 +146,7 @@ class SyncSourceIgnoreTest < ActiveSupport::TestCase
     )
     # Manually set to bypass validation for this test
     ignore.update_column(:source_id, long_pattern)
-    
+
     assert_not ignore.matches?("test")
   end
 
@@ -157,7 +157,7 @@ class SyncSourceIgnoreTest < ActiveSupport::TestCase
       source: "airtable",
       source_id: pathological_pattern
     )
-    
+
     # Test with a string that causes backtracking
     # This should timeout quickly and return false
     result = ignore.matches?("a" * 50 + "b")
@@ -171,7 +171,7 @@ class SyncSourceIgnoreTest < ActiveSupport::TestCase
       source: "airtable",
       source_id: pathological_pattern
     )
-    
+
     # This should timeout quickly
     result = ignore.matches?("a" * 100)
     assert_equal false, result, "Should timeout and return false"
@@ -195,4 +195,3 @@ class SyncSourceIgnoreTest < ActiveSupport::TestCase
     end
   end
 end
-

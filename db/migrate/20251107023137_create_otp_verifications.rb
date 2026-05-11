@@ -10,7 +10,7 @@ class CreateOtpVerifications < ActiveRecord::Migration[8.0]
       t.timestamps
     end
 
-    add_index :otp_verifications, [:email_normalized, :expires_at]
+    add_index :otp_verifications, [ :email_normalized, :expires_at ]
     add_index :otp_verifications, :expires_at
   end
 end

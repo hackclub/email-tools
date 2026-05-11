@@ -17,8 +17,8 @@ class SoftDeleteAndSeenCols < ActiveRecord::Migration[8.0]
 
   def down
     execute "DROP INDEX CONCURRENTLY IF EXISTS index_sync_sources_active_unique;"
-    
-    add_index :sync_sources, [:source, :source_id], unique: true, name: "index_sync_sources_on_source_and_source_id", algorithm: :concurrently
+
+    add_index :sync_sources, [ :source, :source_id ], unique: true, name: "index_sync_sources_on_source_and_source_id", algorithm: :concurrently
 
     remove_column :sync_sources, :last_seen_at
     remove_column :sync_sources, :seen_count

@@ -5,7 +5,7 @@ class ProfileUpdateController < ApplicationController
   before_action :require_authenticated_session
 
   PROFILE_FIELDS = %w[firstName lastName genderSelfReported birthdayYear birthdayMonth birthdayDay addressLine1 addressLine2 addressCity addressState addressZipCode addressCountry].freeze
-  
+
   REQUIRED_ADDRESS_FIELDS = %w[addressLine1 addressCity addressState addressZipCode addressCountry].freeze
 
   def edit
@@ -27,27 +27,27 @@ class ProfileUpdateController < ApplicationController
       month: profile_params["birthdayMonth"],
       day: profile_params["birthdayDay"]
     }
-    
+
     # Get current profile to compare what changed
     current_profile = fetch_current_profile(email)
-    
+
     # Check if birthday fields have changed from current values
     current_birthday = {
       year: current_profile["birthdayYear"],
       month: current_profile["birthdayMonth"],
       day: current_profile["birthdayDay"]
     }
-    
+
     # Only check if birthday changed if at least one field is present
     birthday_fields_present = birthday_fields.values.any?(&:present?)
     birthday_changed = false
-    
+
     if birthday_fields_present
       birthday_changed = birthday_fields[:year] != current_birthday[:year] ||
                          birthday_fields[:month] != current_birthday[:month] ||
                          birthday_fields[:day] != current_birthday[:day]
     end
-    
+
     # If birthday changed, combine them
     if birthday_changed
       # Check if all required birthday fields are present
@@ -57,7 +57,7 @@ class ProfileUpdateController < ApplicationController
           year = birthday_fields[:year].to_i
           month = birthday_fields[:month].to_i
           day = birthday_fields[:day].to_i
-          
+
           # Validate date
           date = Date.new(year, month, day)
           profile_params["birthday"] = date.strftime("%Y-%m-%dT00:00:00.000Z")
@@ -72,7 +72,7 @@ class ProfileUpdateController < ApplicationController
         return
       end
     end
-    
+
     # Remove birthday component fields from params (we've combined them into birthday)
     profile_params = profile_params.except("birthdayYear", "birthdayMonth", "birthdayDay")
 
@@ -80,25 +80,25 @@ class ProfileUpdateController < ApplicationController
     # This ensures we don't send nil/empty values that would overwrite existing data
     # (upsert behavior: only update fields that are explicitly provided with values)
     fields_to_update = {}
-    
+
     profile_params.each do |key, new_value|
       current_value = current_profile[key]
-      
+
       # Normalize values for comparison (handle nil/empty strings)
       current_normalized = (current_value || "").to_s.strip
       new_normalized = (new_value || "").to_s.strip
-      
+
       # Skip if values are the same
       next if new_normalized == current_normalized
-      
+
       # Only include fields with non-blank values
       # This preserves existing values when form can't match them (e.g., nonstandard genders)
       # and follows upsert principle: only update fields explicitly set
       next unless new_value.present?
-      
+
       fields_to_update[key] = new_value
     end
-    
+
     # Handle addressLine2: if any REQUIRED address field is being edited, include it even if blank
     required_address_fields_being_edited = fields_to_update.keys.any? { |k| REQUIRED_ADDRESS_FIELDS.include?(k) }
     if required_address_fields_being_edited && profile_params.key?("addressLine2")
@@ -188,12 +188,12 @@ class ProfileUpdateController < ApplicationController
     return {} if contacts.empty?
 
     contact = contacts.first
-    
+
     # Parse birthday from ISO8601 string to extract year, month, day for placeholders
     birthday_year = nil
     birthday_month = nil
     birthday_day = nil
-    
+
     if contact["birthday"].present?
       begin
         # Parse ISO8601 string and extract date components
@@ -205,7 +205,7 @@ class ProfileUpdateController < ApplicationController
         Rails.logger.warn("Failed to parse birthday: #{contact['birthday']} - #{e.message}")
       end
     end
-    
+
     {
       "firstName" => contact["firstName"],
       "lastName" => contact["lastName"],
@@ -222,4 +222,3 @@ class ProfileUpdateController < ApplicationController
     }
   end
 end
-

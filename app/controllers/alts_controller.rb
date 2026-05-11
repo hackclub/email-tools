@@ -18,7 +18,7 @@ class AltsController < ApplicationController
     alts_to_unsubscribe = Array.wrap(params[:alts])
 
     # Security check: Verify that the submitted alts are valid plus-aliases of the logged-in user.
-    user_part, domain_part = main_email.split('@')
+    user_part, domain_part = main_email.split("@")
     verified_alts = alts_to_unsubscribe.select do |alt|
       alt.match?(/\A#{Regexp.escape(user_part)}\+.+@#{Regexp.escape(domain_part)}\z/i)
     end.uniq(&:downcase)
@@ -35,6 +35,4 @@ class AltsController < ApplicationController
     flash[:notice] = "Unsubscription process started for #{verified_alts.count} email(s). This may take a few minutes to complete."
     redirect_to alts_path
   end
-
 end
-

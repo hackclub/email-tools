@@ -96,7 +96,7 @@ class PrepareLoopsFieldsForOutboxJob
         extracted_data.each do |loops_field, field_value|
           # Use override strategy for setFullAddress, upsert for setFullName
           strategy = (special_field_type =~ /setFullAddress/i) ? :override : :upsert
-          
+
           envelope[loops_field] = {
             value: field_value,
             strategy: strategy,

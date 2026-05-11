@@ -22,7 +22,7 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
     LoopsOutboxEnvelope.destroy_all
     LoopsFieldBaseline.destroy_all
     LoopsContactChangeAudit.destroy_all
-    
+
     # Clean up semaphore
     REDIS_FOR_RATE_LIMITING.del(LoopsDispatchWorker::SEMAPHORE_KEY) if defined?(LoopsDispatchWorker::SEMAPHORE_KEY)
   end
@@ -980,10 +980,10 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
       # Reload envelope and verify it was marked as failed
       envelope.reload
       assert_equal "failed", envelope.status, "Envelope MUST be marked as failed"
-      
+
       # Verify updated_at was changed (update_columns should update it)
       assert envelope.updated_at > original_updated_at, "updated_at should be updated by update_columns"
-      
+
       # Verify error details persist
       assert_not_nil envelope.error, "Error details must persist"
       assert_equal "preflight_check", envelope.error["stage"], "Error stage must be 'preflight_check'"
@@ -1030,7 +1030,7 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
       # even after the exception is raised
       envelope.reload
       assert_equal "failed", envelope.status, "Envelope MUST remain marked as failed after exception"
-      
+
       # Verify error details persist
       assert_not_nil envelope.error, "Error details must persist after exception"
       assert_equal "preflight_check", envelope.error["stage"], "Error stage must persist"
@@ -1059,16 +1059,16 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
     # Verify that jobs can still be enqueued (semaphore check happens at execution time)
     job_id = LoopsDispatchWorker.perform_async
     assert_not_nil job_id, "Job should be enqueued successfully"
-    
+
     # Note: Cleanup happens in teardown method
   end
 
   test "max concurrent matches LoopsService rate limit" do
     # Verify that the concurrency limit matches LoopsService rate limit
     rate_limit = LoopsService.rate_limit_rps
-    
+
     # Verify max concurrent matches (or is at least <= rate limit)
-    assert_operator LoopsDispatchWorker::MAX_CONCURRENT, :<=, rate_limit, 
+    assert_operator LoopsDispatchWorker::MAX_CONCURRENT, :<=, rate_limit,
                     "Max concurrent should be <= rate limit"
     assert_equal 10, LoopsDispatchWorker::MAX_CONCURRENT, "Max concurrent should be 10"
   end
@@ -1076,7 +1076,7 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
   test "worker still processes envelopes correctly with throttling enabled" do
     # Verify that throttling doesn't break normal functionality
     sent_payload = nil
-    
+
     original_update_contact = LoopsService.method(:update_contact)
     LoopsService.define_singleton_method(:update_contact) do |email:, **kwargs|
       sent_payload = kwargs.dup
@@ -1108,7 +1108,7 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
       # Verify envelope was processed
       envelope.reload
       assert_equal "sent", envelope.status, "Envelope should be marked as sent"
-      
+
       # Verify API was called
       assert_not_nil sent_payload, "LoopsService.update_contact should have been called"
       assert_equal "value1", sent_payload["field1"], "Correct payload should have been sent"
@@ -1125,7 +1125,7 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
 
     worker1 = LoopsDispatchWorker.new
     worker1.instance_variable_set(:@jid, "test-jid-1")
-    
+
     worker2 = LoopsDispatchWorker.new
     worker2.instance_variable_set(:@jid, "test-jid-2")
 
@@ -1257,10 +1257,10 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
   def ensure_worker_can_run(worker)
     # Clean up semaphore first
     REDIS_FOR_RATE_LIMITING.del(LoopsDispatchWorker::SEMAPHORE_KEY)
-    
+
     # Set jid if not set
     worker.instance_variable_set(:@jid, SecureRandom.hex(12)) unless worker.jid
-    
+
     # Acquire semaphore
     worker.acquire_semaphore
   end

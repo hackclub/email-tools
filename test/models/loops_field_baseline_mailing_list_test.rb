@@ -88,7 +88,7 @@ class LoopsFieldBaselineMailingListTest < ActiveSupport::TestCase
       }
     }
 
-    LoopsService.stub :find_contact, [contact_hash] do
+    LoopsService.stub :find_contact, [ contact_hash ] do
       result = LoopsFieldBaseline.check_contact_existence_and_load_baselines(email_normalized: @email)
       assert_equal true, result
     end
@@ -98,7 +98,7 @@ class LoopsFieldBaselineMailingListTest < ActiveSupport::TestCase
 
   test "initial_payload_for_new_contact includes default list if configured" do
     ENV["DEFAULT_LOOPS_LIST_ID"] = "default_list_123"
-    
+
     sync_source = SyncSource.create!(
       source: "airtable",
       source_id: "app123",
@@ -116,7 +116,7 @@ class LoopsFieldBaselineMailingListTest < ActiveSupport::TestCase
 
   test "initial_payload_for_new_contact excludes default list if not configured" do
     ENV.delete("DEFAULT_LOOPS_LIST_ID")
-    
+
     sync_source = SyncSource.create!(
       source: "airtable",
       source_id: "app123",
@@ -132,4 +132,3 @@ class LoopsFieldBaselineMailingListTest < ActiveSupport::TestCase
     assert_includes LoopsFieldBaseline::SYSTEM_FIELDS, "mailingLists"
   end
 end
-

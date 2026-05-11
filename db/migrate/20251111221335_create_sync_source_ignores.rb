@@ -6,6 +6,6 @@ class CreateSyncSourceIgnores < ActiveRecord::Migration[8.0]
       t.string :reason
       t.timestamps
     end
-    add_index :sync_source_ignores, [:source, :source_id], unique: true
+    add_index :sync_source_ignores, [ :source, :source_id ], unique: true
   end
 end

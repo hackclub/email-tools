@@ -29,24 +29,24 @@ module Ai
       begin
         # Use RubyLLM with structured output
         chat = RubyLLM.chat.with_schema(schema_class)
-        
+
         # Use provided model or default
         model_to_use = model || RubyLLM.config.default_model
-        
+
         # Set model if provided
         if model
           chat = chat.with_model(model)
         end
-        
+
         # Set temperature
         chat = chat.with_temperature(temp)
-        
+
         # Set reasoning parameters for GPT-5 models
-        if model_to_use&.start_with?('gpt-5')
+        if model_to_use&.start_with?("gpt-5")
           effort = reasoning_effort || "minimal"
           chat = chat.with_params(reasoning_effort: effort)
         end
-        
+
         response = chat.ask(prompt)
 
         latency_ms = ((Time.current - start_time) * 1000).round

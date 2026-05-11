@@ -31,7 +31,7 @@ namespace :loops do
   end
 
   desc "Refresh a single contact by email (queues worker)"
-  task :refresh_contact, [:email] => :environment do |_t, args|
+  task :refresh_contact, [ :email ] => :environment do |_t, args|
     email = args[:email]
     unless email
       puts "Usage: rake loops:refresh_contact[email@example.com]"
@@ -43,8 +43,3 @@ namespace :loops do
     puts "Queued refresh job for #{email}"
   end
 end
-
-
-
-
-

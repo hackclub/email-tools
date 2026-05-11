@@ -12,14 +12,14 @@ class AuthenticatedSidekiqWeb
     if username.present? && password.present?
       auth = Rack::Auth::Basic::Request.new(env)
 
-      unless auth.provided? && auth.basic? && auth.credentials == [username, password]
+      unless auth.provided? && auth.basic? && auth.credentials == [ username, password ]
         return [
           401,
           {
             "Content-Type" => "text/plain",
             "WWW-Authenticate" => 'Basic realm="Admin Area"'
           },
-          ["Authentication required"]
+          [ "Authentication required" ]
         ]
       end
     end
@@ -28,4 +28,3 @@ class AuthenticatedSidekiqWeb
     @app.call(env)
   end
 end
-

@@ -10,4 +10,3 @@ module Discovery
     end
   end
 end
-

@@ -18,4 +18,3 @@ class PruneAuthenticatedSessionsWorker
     deleted_count
   end
 end
-

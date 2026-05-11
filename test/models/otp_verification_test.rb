@@ -22,14 +22,14 @@ class OtpVerificationTest < ActiveSupport::TestCase
       salt: "salt1",
       expires_at: 10.minutes.from_now
     )
-    
+
     expired = OtpVerification.create!(
       email_normalized: @email_normalized,
       code_hash: "hash2",
       salt: "salt2",
       expires_at: 1.minute.ago
     )
-    
+
     verified = OtpVerification.create!(
       email_normalized: @email_normalized,
       code_hash: "hash3",
@@ -37,7 +37,7 @@ class OtpVerificationTest < ActiveSupport::TestCase
       expires_at: 10.minutes.from_now,
       verified_at: Time.current
     )
-    
+
     active_otps = OtpVerification.active
     assert_includes active_otps, active
     assert_not_includes active_otps, expired
@@ -51,14 +51,14 @@ class OtpVerificationTest < ActiveSupport::TestCase
       salt: "salt1",
       expires_at: 10.minutes.from_now
     )
-    
+
     expired = OtpVerification.create!(
       email_normalized: @email_normalized,
       code_hash: "hash2",
       salt: "salt2",
       expires_at: 1.minute.ago
     )
-    
+
     expired_otps = OtpVerification.expired
     assert_not_includes expired_otps, active
     assert_includes expired_otps, expired
@@ -71,14 +71,14 @@ class OtpVerificationTest < ActiveSupport::TestCase
       salt: "salt1",
       expires_at: 10.minutes.from_now
     )
-    
+
     otp2 = OtpVerification.create!(
       email_normalized: EmailNormalizer.normalize("other@example.com"),
       code_hash: "hash2",
       salt: "salt2",
       expires_at: 10.minutes.from_now
     )
-    
+
     filtered = OtpVerification.for_email(@email)
     assert_includes filtered, otp1
     assert_not_includes filtered, otp2
@@ -112,10 +112,10 @@ class OtpVerificationTest < ActiveSupport::TestCase
       expires_at: 10.minutes.from_now,
       attempts: 0
     )
-    
+
     otp.increment_attempts!
     assert_equal 1, otp.reload.attempts
-    
+
     otp.increment_attempts!
     assert_equal 2, otp.reload.attempts
   end
@@ -127,11 +127,10 @@ class OtpVerificationTest < ActiveSupport::TestCase
       salt: "salt1",
       expires_at: 10.minutes.from_now
     )
-    
+
     assert_nil otp.verified_at
-    
+
     otp.mark_verified!
     assert_not_nil otp.reload.verified_at
   end
 end
-

@@ -11,7 +11,7 @@ class CreateLlmCaches < ActiveRecord::Migration[8.0]
       t.timestamps
     end
 
-    add_index :llm_caches, [:task, :input_fingerprint], unique: true
+    add_index :llm_caches, [ :task, :input_fingerprint ], unique: true
     add_index :llm_caches, :last_used_at
   end
 end

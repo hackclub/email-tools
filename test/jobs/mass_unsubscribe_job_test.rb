@@ -5,25 +5,25 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
   def setup
     @main_email = "zach@hackclub.com"
     @main_email_normalized = EmailNormalizer.normalize(@main_email)
-    @alt_emails = ["zach+test@hackclub.com", "zach+test2@hackclub.com"]
-    
+    @alt_emails = [ "zach+test@hackclub.com", "zach+test2@hackclub.com" ]
+
     # Clean up audit logs
-    LoopsContactChangeAudit.where(email_normalized: [@main_email_normalized] + @alt_emails.map { |e| EmailNormalizer.normalize(e) }).delete_all
+    LoopsContactChangeAudit.where(email_normalized: [ @main_email_normalized ] + @alt_emails.map { |e| EmailNormalizer.normalize(e) }).delete_all
   end
 
   def teardown
-    LoopsContactChangeAudit.where(email_normalized: [@main_email_normalized] + @alt_emails.map { |e| EmailNormalizer.normalize(e) }).delete_all
+    LoopsContactChangeAudit.where(email_normalized: [ @main_email_normalized ] + @alt_emails.map { |e| EmailNormalizer.normalize(e) }).delete_all
   end
 
   test "performs full merge and unsubscribe flow successfully" do
     main_contact = { "email" => @main_email, "firstName" => "Zach", "lastName" => "Latta" }
-    alt_contact1 = { "email" => @alt_emails[0], "firstName" => "Zach", "tags" => ["test"] }
+    alt_contact1 = { "email" => @alt_emails[0], "firstName" => "Zach", "tags" => [ "test" ] }
     alt_contact2 = { "email" => @alt_emails[1], "lastName" => "Latta" }
 
     merged_fields = {
       "firstName" => "Zach",
       "lastName" => "Latta",
-      "tags" => ["test"]
+      "tags" => [ "test" ]
     }
 
     # Mock LoopsService.send_transactional_email to prevent real emails
@@ -32,11 +32,11 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
       LoopsService.stub(:find_contact, ->(email:) {
         case email
         when @main_email
-          [main_contact]
+          [ main_contact ]
         when @alt_emails[0]
-          [alt_contact1]
+          [ alt_contact1 ]
         when @alt_emails[1]
-          [alt_contact2]
+          [ alt_contact2 ]
         else
           []
         end
@@ -74,7 +74,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
     merged_fields = { "firstName" => "Zach", "lastName" => "Latta" }
 
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      LoopsService.stub(:find_contact, ->(email:) { [main_contact] }) do
+      LoopsService.stub(:find_contact, ->(email:) { [ main_contact ] }) do
         Ai::ContactMergerService.stub(:call, merged_fields) do
           LoopsService.stub(:update_contact, ->(**args) { { "success" => true, "id" => "test_id" } }) do
             job = MassUnsubscribeJob.new
@@ -86,7 +86,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
             ).where("provenance->>'purpose' = ?", "alt_unsubscribe_merge")
 
             assert audits.count >= 2, "Should create at least 2 audit logs"
-            
+
             firstName_audit = audits.find { |a| a.field_name == "firstName" }
             assert_not_nil firstName_audit
             assert_equal true, firstName_audit.is_self_service
@@ -104,7 +104,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
     merged_fields = {}
 
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      LoopsService.stub(:find_contact, ->(email:) { [main_contact] }) do
+      LoopsService.stub(:find_contact, ->(email:) { [ main_contact ] }) do
         Ai::ContactMergerService.stub(:call, merged_fields) do
           LoopsService.stub(:update_contact, ->(**args) { { "success" => true, "id" => "test_id" } }) do
             job = MassUnsubscribeJob.new
@@ -143,7 +143,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
 
     update_calls = []
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      LoopsService.stub(:find_contact, ->(email:) { [main_contact] }) do
+      LoopsService.stub(:find_contact, ->(email:) { [ main_contact ] }) do
         Ai::ContactMergerService.stub(:call, merged_fields_with_sensitive) do
           LoopsService.stub(:update_contact, ->(email:, **kwargs) {
             update_calls << { email: email, kwargs: kwargs.dup }
@@ -154,7 +154,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
 
             # Get all main email updates
             main_updates = update_calls.select { |c| c[:email] == @main_email }
-            
+
             # First update should be profile fields (without mailingLists)
             profile_update = main_updates.first
             assert_not_nil profile_update
@@ -164,7 +164,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
             assert_nil profile_update[:kwargs]["unsubscribed"]
             assert_nil profile_update[:kwargs]["mailingLists"], "mailingLists should be removed from profile update"
             assert_equal "Zach", profile_update[:kwargs]["firstName"]
-            
+
             # Second update should be mailingLists separately
             mailing_lists_update = main_updates.find { |u| u[:kwargs].key?("mailingLists") }
             assert_not_nil mailing_lists_update, "mailingLists should be updated separately"
@@ -183,7 +183,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
 
     update_calls = []
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      LoopsService.stub(:find_contact, ->(email:) { [main_contact] }) do
+      LoopsService.stub(:find_contact, ->(email:) { [ main_contact ] }) do
         Ai::ContactMergerService.stub(:call, merged_fields) do
           LoopsService.stub(:update_contact, ->(email:, **kwargs) {
             update_calls << { email: email, kwargs: kwargs }
@@ -195,7 +195,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
             # Should have multiple update calls for main email (batched)
             main_updates = update_calls.select { |c| c[:email] == @main_email }
             assert main_updates.length >= 2, "Should update in batches when >50 fields"
-            
+
             # Verify total fields across all batches equals expected (minus removed fields)
             total_fields = main_updates.sum { |c| c[:kwargs].length }
             assert_equal 60, total_fields, "All fields should be updated"
@@ -211,7 +211,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
 
     call_count = 0
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      LoopsService.stub(:find_contact, ->(email:) { [main_contact] }) do
+      LoopsService.stub(:find_contact, ->(email:) { [ main_contact ] }) do
         Ai::ContactMergerService.stub(:call, merged_fields) do
           LoopsService.stub(:update_contact, ->(**args) {
             call_count += 1
@@ -261,7 +261,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
     }
 
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      LoopsService.stub(:find_contact, ->(email:) { [main_contact] }) do
+      LoopsService.stub(:find_contact, ->(email:) { [ main_contact ] }) do
         Ai::ContactMergerService.stub(:call, merged_fields) do
           LoopsService.stub(:update_contact, ->(**args) { { "success" => true, "id" => "test_id" } }) do
             job = MassUnsubscribeJob.new
@@ -274,7 +274,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
 
             # Should have exactly 1 audit log (for lastName)
             assert_equal 1, audits.count, "Should only create audit log for changed field"
-            
+
             lastName_audit = audits.find { |a| a.field_name == "lastName" }
             assert_not_nil lastName_audit
             assert_equal "Latta", lastName_audit.former_loops_value
@@ -294,7 +294,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
     merged_fields = { "firstName" => "Zach" }
 
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      LoopsService.stub(:find_contact, ->(email:) { [main_contact] }) do
+      LoopsService.stub(:find_contact, ->(email:) { [ main_contact ] }) do
         Ai::ContactMergerService.stub(:call, merged_fields) do
           LoopsService.stub(:update_contact, ->(**args) { { "success" => true, "id" => "test_id" } }) do
             job = MassUnsubscribeJob.new
@@ -322,7 +322,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
 
     update_calls = []
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      LoopsService.stub(:find_contact, ->(email:) { [main_contact] }) do
+      LoopsService.stub(:find_contact, ->(email:) { [ main_contact ] }) do
         Ai::ContactMergerService.stub(:call, merged_fields) do
           LoopsService.stub(:update_contact, ->(email:, **kwargs) {
             update_calls << { email: email, kwargs: kwargs.dup }
@@ -333,14 +333,14 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
 
             # Get all main email updates
             main_updates = update_calls.select { |c| c[:email] == @main_email }
-            
+
             # First update should be profile fields (without mailingLists)
             first_update = main_updates.first
             assert_not_nil first_update
             assert_equal "Zach", first_update[:kwargs]["firstName"]
             assert_equal "Latta", first_update[:kwargs]["lastName"]
             assert_nil first_update[:kwargs]["mailingLists"], "First update should not include mailingLists"
-            
+
             # Second update should be mailingLists
             second_update = main_updates[1]
             assert_not_nil second_update
@@ -358,7 +358,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
     # Create 25 mailing lists to test batching
     mailing_lists = {}
     25.times { |i| mailing_lists["list#{i + 1}"] = true }
-    
+
     merged_fields = {
       "firstName" => "Zach",
       "mailingLists" => mailing_lists
@@ -366,7 +366,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
 
     update_calls = []
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      LoopsService.stub(:find_contact, ->(email:) { [main_contact] }) do
+      LoopsService.stub(:find_contact, ->(email:) { [ main_contact ] }) do
         Ai::ContactMergerService.stub(:call, merged_fields) do
           LoopsService.stub(:update_contact, ->(email:, **kwargs) {
             update_calls << { email: email, kwargs: kwargs.dup }
@@ -377,27 +377,27 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
 
             # Get all main email updates
             main_updates = update_calls.select { |c| c[:email] == @main_email }
-            
+
             # First update should be profile fields
             assert_equal "Zach", main_updates.first[:kwargs]["firstName"]
             assert_nil main_updates.first[:kwargs]["mailingLists"]
-            
+
             # Should have 3 batches for 25 lists (10, 10, 5)
             mailing_list_updates = main_updates[1..-1].select { |u| u[:kwargs].key?("mailingLists") }
             assert_equal 3, mailing_list_updates.length, "Should have 3 batches for 25 lists"
-            
+
             # Verify first batch has 10 lists
             batch1_lists = mailing_list_updates[0][:kwargs]["mailingLists"]
             assert_equal 10, batch1_lists.length, "First batch should have 10 lists"
             assert_equal "list1", batch1_lists.keys.first
             assert_equal "list10", batch1_lists.keys.last
-            
+
             # Verify second batch has 10 lists
             batch2_lists = mailing_list_updates[1][:kwargs]["mailingLists"]
             assert_equal 10, batch2_lists.length, "Second batch should have 10 lists"
             assert_equal "list11", batch2_lists.keys.first
             assert_equal "list20", batch2_lists.keys.last
-            
+
             # Verify third batch has 5 lists
             batch3_lists = mailing_list_updates[2][:kwargs]["mailingLists"]
             assert_equal 5, batch3_lists.length, "Third batch should have 5 lists"
@@ -418,7 +418,7 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
 
     update_calls = []
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      LoopsService.stub(:find_contact, ->(email:) { [main_contact] }) do
+      LoopsService.stub(:find_contact, ->(email:) { [ main_contact ] }) do
         Ai::ContactMergerService.stub(:call, merged_fields) do
           LoopsService.stub(:update_contact, ->(email:, **kwargs) {
             update_calls << { email: email, kwargs: kwargs.dup }
@@ -438,4 +438,3 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
     end
   end
 end
-

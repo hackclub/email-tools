@@ -70,7 +70,7 @@ module Pollers
         else
           field_type
         end
-        [field_identifier(field_id, field["name"]), value]
+        [ field_identifier(field_id, field["name"]), value ]
       end.to_h
 
       current_field_ids = current_field_map.keys
@@ -135,13 +135,13 @@ module Pollers
       loops_fields = {}
       table["fields"].each do |field|
         field_name = field["name"] || ""
-        
+
         # Check for "Loops List - ..." fields
         if field_name.strip.match?(loops_list_pattern)
           loops_fields[field["id"]] = field
           next
         end
-        
+
         # Check for regular "Loops - ..." fields (must start with lowercase after prefix)
         if field_name.strip.match?(loops_pattern)
           field_name_without_prefix = field_name.sub(/\ALoops\s*-\s*(Override\s*-\s*|Special\s*-\s*)?/i, "")

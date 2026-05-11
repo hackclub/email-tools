@@ -143,4 +143,3 @@ module AuthenticationService
     end
   end
 end
-

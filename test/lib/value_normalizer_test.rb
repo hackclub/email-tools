@@ -2,7 +2,7 @@ require "test_helper"
 
 class ValueNormalizerTest < ActiveSupport::TestCase
   test "unwraps single-element arrays" do
-    assert_equal "x", ValueNormalizer.from_airtable(["x"])
+    assert_equal "x", ValueNormalizer.from_airtable([ "x" ])
   end
 
   test "empty array -> nil" do
@@ -15,7 +15,7 @@ class ValueNormalizerTest < ActiveSupport::TestCase
   end
 
   test "multi-element arrays preserved" do
-    assert_equal ["a", "b"], ValueNormalizer.from_airtable(["a", "b"])
+    assert_equal [ "a", "b" ], ValueNormalizer.from_airtable([ "a", "b" ])
   end
 
   test "nil handling" do
@@ -23,12 +23,12 @@ class ValueNormalizerTest < ActiveSupport::TestCase
   end
 
   test "handles nested single-element arrays" do
-    assert_equal "test", ValueNormalizer.from_airtable([["test"]])
+    assert_equal "test", ValueNormalizer.from_airtable([ [ "test" ] ])
   end
 
   test "handles arrays with nil elements" do
-    assert_equal "x", ValueNormalizer.from_airtable(["x", nil])
-    assert_nil ValueNormalizer.from_airtable([nil])
+    assert_equal "x", ValueNormalizer.from_airtable([ "x", nil ])
+    assert_nil ValueNormalizer.from_airtable([ nil ])
   end
 
   test "handles other types unchanged" do
@@ -37,4 +37,3 @@ class ValueNormalizerTest < ActiveSupport::TestCase
     assert_equal false, ValueNormalizer.from_airtable(false)
   end
 end
-

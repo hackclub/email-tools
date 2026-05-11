@@ -14,7 +14,7 @@ class AltFinderServiceTest < ActiveSupport::TestCase
       "zach+test@hackclub.com",
       "zach+test2@hackclub.com"
     ]
-    
+
     mock_unsubscribed_alts = [
       "zach+old@hackclub.com",
       "zach+something@hackclub.com"
@@ -95,7 +95,7 @@ class AltFinderServiceTest < ActiveSupport::TestCase
     assert_raises(ArgumentError) do
       AltFinderService.call(main_email: "")
     end
-    
+
     assert_raises(ArgumentError) do
       AltFinderService.call(main_email: nil)
     end
@@ -111,7 +111,7 @@ class AltFinderServiceTest < ActiveSupport::TestCase
   test "handles SQL special characters in user part without error" do
     # Test that emails with special characters like % don't cause SQL injection
     email_with_special_chars = "zach%test@hackclub.com"
-    
+
     mock_order = Object.new
     mock_order.define_singleton_method(:order) { |*args| mock_order }
     mock_order.define_singleton_method(:pluck) { |*args| [] }
@@ -137,10 +137,10 @@ class AltFinderServiceTest < ActiveSupport::TestCase
     # WarehouseRecord has its own connects_to mapping, so we must use
     # WarehouseRecord.connected_to, not ApplicationRecord.connected_to.
     # Otherwise, queries may run against the wrong database.
-    
-    mock_subscribed_alts = ["zach+test@hackclub.com"]
+
+    mock_subscribed_alts = [ "zach+test@hackclub.com" ]
     mock_unsubscribed_alts = []
-    
+
     # Create mock for subscribed query
     mock_order_subscribed = Object.new
     mock_order_subscribed.define_singleton_method(:order) { |*args| mock_order_subscribed }
@@ -148,7 +148,7 @@ class AltFinderServiceTest < ActiveSupport::TestCase
     mock_where_subscribed = Object.new
     mock_where_subscribed.define_singleton_method(:where) { |*args, **kwargs| mock_order_subscribed }
     mock_where_subscribed.define_singleton_method(:order) { |*args| mock_order_subscribed }
-    
+
     # Create mock for unsubscribed query
     mock_order_unsubscribed = Object.new
     mock_order_unsubscribed.define_singleton_method(:order) { |*args| mock_order_unsubscribed }
@@ -208,4 +208,3 @@ class AltFinderServiceTest < ActiveSupport::TestCase
     refute application_record_called, "ApplicationRecord.connected_to should NOT be called"
   end
 end
-

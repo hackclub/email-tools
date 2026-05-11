@@ -6,7 +6,7 @@ class RefreshContactFromLoopsWorker
   sidekiq_options queue: :default
 
   # Refresh a contact's loops fields and mailing lists from Loops API
-  # 
+  #
   # This worker:
   # - Fetches the contact from Loops API by email
   # - Updates/creates LoopsFieldBaseline records with current values
@@ -53,4 +53,3 @@ class RefreshContactFromLoopsWorker
     end
   end
 end
-

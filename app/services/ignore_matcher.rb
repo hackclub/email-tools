@@ -133,4 +133,3 @@ class IgnoreMatcher
     matches.uniq
   end
 end
-

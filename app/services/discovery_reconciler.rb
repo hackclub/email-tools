@@ -25,7 +25,7 @@ class DiscoveryReconciler
 
     # 2) Remove ignored using centralized IgnoreMatcher service
     matcher = IgnoreMatcher.for(source: source_key)
-    
+
     desired = remote.reject do |r|
       # Check if any ignore pattern matches this source_id (O(1) for exact, O(R) for regex)
       matcher.match?(r[:id])
@@ -129,4 +129,3 @@ class DiscoveryReconciler
     Rails.logger.info("DiscoveryReconciler[#{source_key}]: created=#{created_count}, updated=#{updated_count}, revived=#{revived_count}, deleted=#{deleted_count}")
   end
 end
-

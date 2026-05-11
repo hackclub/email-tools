@@ -65,14 +65,13 @@ class LoopsAudienceTest < ActiveSupport::TestCase
 
   test "insert_all raises ActiveRecord::ReadOnlyRecord" do
     assert_raises(ActiveRecord::ReadOnlyRecord, "LoopsAudience is read-only") do
-      LoopsAudience.insert_all([{ email: "test@example.com" }])
+      LoopsAudience.insert_all([ { email: "test@example.com" } ])
     end
   end
 
   test "upsert_all raises ActiveRecord::ReadOnlyRecord" do
     assert_raises(ActiveRecord::ReadOnlyRecord, "LoopsAudience is read-only") do
-      LoopsAudience.upsert_all([{ email: "test@example.com" }])
+      LoopsAudience.upsert_all([ { email: "test@example.com" } ])
     end
   end
 end
-

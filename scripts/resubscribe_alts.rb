@@ -23,10 +23,10 @@ error_count = 0
 
 emails.each_with_index do |email, i|
   puts "[#{i+1}/#{emails.length}] Resubscribing #{email}..."
-  
+
   begin
     response = LoopsService.update_contact(email: email, subscribed: true)
-    
+
     if response && response["success"] == true
       puts "  ✓ Successfully resubscribed"
       success_count += 1
@@ -45,6 +45,3 @@ puts "=== Summary ==="
 puts "Successfully resubscribed: #{success_count}"
 puts "Errors: #{error_count}"
 puts "Total: #{emails.length}"
-
-
-

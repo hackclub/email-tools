@@ -11,7 +11,7 @@ module ProdDbHelper
     # Try to get config from database.yml first
     configs = ActiveRecord::Base.configurations.configs_for(env_name: "production", name: "production_readonly")
     prod_config = configs&.first
-    
+
     unless prod_config
       # Fallback: create config hash directly from URL
       prod_config_hash = {
@@ -24,11 +24,11 @@ module ProdDbHelper
       # Use config from database.yml
       ActiveRecord::Base.establish_connection(prod_config.configuration_hash)
     end
-    
+
     begin
       # Verify connection works
       ActiveRecord::Base.connection.execute("SELECT 1")
-      
+
       # Yield to the block
       yield
     ensure
@@ -45,9 +45,8 @@ module ProdDbHelper
 
     prod_config = ActiveRecord::Base.configurations.configs_for(env_name: "production", name: "production_readonly").first
     raise "production_readonly database configuration not found" unless prod_config
-    
+
     ActiveRecord::Base.establish_connection(prod_config.configuration_hash)
     ActiveRecord::Base.connection
   end
 end
-

@@ -162,12 +162,12 @@ class SyncSourcesControllerTest < ActionDispatch::IntegrationTest
       { id: "base1", name: "Base One" },
       { id: "a" * 50 + "b", name: "Test Base" }
     ]
-    
+
     Discovery::AirtableAdapter.stub :new, adapter do
       start_time = Time.current
       get admin_sync_sources_path(source: "airtable"), headers: auth_headers
       elapsed = Time.current - start_time
-      
+
       assert_response :success
       # Should complete quickly despite pathological pattern (timeout protects us)
       assert elapsed < 1.0, "Index should load quickly even with pathological regex (took #{elapsed}s)"
@@ -176,7 +176,7 @@ class SyncSourcesControllerTest < ActionDispatch::IntegrationTest
 
   test "index action requires source parameter" do
     get admin_sync_sources_path, headers: auth_headers
-    
+
     assert_response :success
     assert_match(/Source parameter is required/, response.body)
     assert_match(/Select a source type/, response.body)
@@ -187,10 +187,10 @@ class SyncSourcesControllerTest < ActionDispatch::IntegrationTest
     adapter.expect :list_ids_with_names, [
       { id: "base1", name: "Base One" }
     ]
-    
+
     Discovery::AirtableAdapter.stub :new, adapter do
       get admin_sync_sources_path(source: "airtable"), headers: auth_headers
-      
+
       assert_response :success
       assert_match(/Sync Sources/, response.body)
       adapter.verify
@@ -202,10 +202,10 @@ class SyncSourcesControllerTest < ActionDispatch::IntegrationTest
     adapter.expect :list_ids_with_names, [
       { id: "base1", name: "Base One" }
     ]
-    
+
     Discovery::AirtableAdapter.stub :new, adapter do
       get admin_sync_sources_path(source: "airtable"), headers: auth_headers
-      
+
       assert_response :success
       # Check for generic labels
       assert_match(/Source ID/, response.body)
@@ -224,9 +224,9 @@ class SyncSourcesControllerTest < ActionDispatch::IntegrationTest
       source_id: "base123",
       display_name: "Test Base"
     )
-    
+
     get admin_sync_source_path(sync_source), headers: auth_headers
-    
+
     assert_response :success
     # Check for generic label
     assert_match(/Source ID/, response.body)
@@ -256,7 +256,7 @@ class SyncSourcesControllerTest < ActionDispatch::IntegrationTest
       source: "airtable",
       source_id: "^old.*"
     )
-    
+
     s1 = SyncSource.create!(
       source: "airtable",
       source_id: "old123",
@@ -264,31 +264,31 @@ class SyncSourcesControllerTest < ActionDispatch::IntegrationTest
     )
     # Manually restore S1 (simulating a previously ignored source that was restored)
     s1.restore! if s1.deleted_at.present?
-    
+
     # Create source S2 that will match the new pattern P2
     s2 = SyncSource.create!(
       source: "airtable",
       source_id: "new456",
       display_name: "New Base"
     )
-    
+
     # Add a new pattern P2 matching source S2
     post admin_sync_sources_ignore_path, params: {
       source: "airtable",
       pattern: "^new.*"
     }, headers: auth_headers
-    
+
     assert_redirected_to admin_sync_sources_path(source: "airtable")
-    
+
     # Verify only S2 is deleted (matches new pattern P2)
     assert_nil SyncSource.find_by(id: s2.id), "S2 should be soft-deleted by new pattern"
     deleted_s2 = SyncSource.with_deleted.find_by(id: s2.id)
     assert_not_nil deleted_s2
     assert_equal "ignored_pattern", deleted_s2.deleted_reason
-    
+
     # Verify S1 is NOT deleted (matches old pattern P1, but should not be affected)
     assert_not_nil SyncSource.find_by(id: s1.id), "S1 should remain active (matches old pattern, not new one)"
-    
+
     # Verify both patterns exist
     assert SyncSourceIgnore.exists?(source: "airtable", source_id: "^old.*")
     assert SyncSourceIgnore.exists?(source: "airtable", source_id: "^new.*")
@@ -304,21 +304,21 @@ class SyncSourcesControllerTest < ActionDispatch::IntegrationTest
         display_name: "Base #{source_id}"
       )
     end
-    
+
     # Create a pattern that matches a subset (base1 through base9)
     expected_matching_ids = (1..9).map { |i| "base#{i}" }
-    
+
     start_time = Time.current
     post admin_sync_sources_ignore_path, params: {
       source: "airtable",
       pattern: "^base[1-9]$"
     }, headers: auth_headers
     elapsed = Time.current - start_time
-    
+
     assert_redirected_to admin_sync_sources_path(source: "airtable")
     # Should complete quickly (under 5 seconds) even with 10,000+ records
     assert elapsed < 5.0, "Ignore action should complete quickly with many records (took #{elapsed}s)"
-    
+
     # Verify matching sources were deleted (should be 9: base1 through base9)
     expected_matching_ids.each do |source_id|
       deleted = SyncSource.with_deleted.find_by(source: "airtable", source_id: source_id)
@@ -326,21 +326,20 @@ class SyncSourcesControllerTest < ActionDispatch::IntegrationTest
       assert_not_nil deleted.deleted_at, "Source #{source_id} should have deleted_at set"
       assert_equal "ignored_pattern", deleted.deleted_reason, "Source #{source_id} should have correct deleted_reason"
     end
-    
+
     # Verify non-matching sources remain active (base10 and above)
     non_matching = SyncSource.find_by(source: "airtable", source_id: "base10")
     assert_not_nil non_matching, "base10 should remain active"
     assert_nil non_matching.deleted_at, "base10 should not be deleted"
-    
+
     # Verify total counts
     deleted_count = SyncSource.with_deleted.where(
       source: "airtable",
       deleted_reason: "ignored_pattern"
     ).count
     assert_equal 9, deleted_count, "Should have deleted exactly 9 matching sources"
-    
+
     active_count = SyncSource.where(source: "airtable").count
     assert_equal 9991, active_count, "Should have 9991 active sources remaining"
   end
 end
-

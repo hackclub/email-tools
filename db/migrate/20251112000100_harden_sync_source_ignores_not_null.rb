@@ -10,5 +10,3 @@ class HardenSyncSourceIgnoresNotNull < ActiveRecord::Migration[8.0]
     change_column_null :sync_source_ignores, :source_id, true
   end
 end
-
-

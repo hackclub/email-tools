@@ -21,4 +21,3 @@ class OtpVerification < ApplicationRecord
     update!(verified_at: Time.current)
   end
 end
-

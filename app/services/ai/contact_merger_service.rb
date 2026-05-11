@@ -1,9 +1,9 @@
-require 'json'
+require "json"
 
 module Ai
   class ContactMergerService
     MAX_RETRIES = 2
-    
+
     # Merges contact data using parallel AI calls for consistency.
     # @param contacts [Array<Hash>] An array of contact data hashes from the Loops API.
     # @param main_email [String] The user's primary email address.
@@ -20,9 +20,9 @@ module Ai
             Ai::Client.structured_generate(
               prompt: prompt,
               schema_class: Ai::Prompts::MergeContacts::Schema,
-              model: 'gpt-5',
+              model: "gpt-5",
               temp: 0,
-              reasoning_effort: 'high'
+              reasoning_effort: "high"
             )
           end
         end
@@ -33,7 +33,7 @@ module Ai
 
         # Verify that all results are identical
         if sorted_results.uniq.length == 1
-          return results.first # Return the original, unsorted version
+          results.first # Return the original, unsorted version
         else
           Rails.logger.warn("AI::ContactMergerService: AI results are not consistent. Results: #{results.inspect}")
           raise "AI results are not consistent."
@@ -67,5 +67,3 @@ module Ai
     end
   end
 end
-
-

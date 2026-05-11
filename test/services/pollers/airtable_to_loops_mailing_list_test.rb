@@ -54,4 +54,3 @@ module Pollers
     end
   end
 end
-

@@ -18,4 +18,3 @@ class PruneOtpVerificationsWorker
     deleted_count
   end
 end
-

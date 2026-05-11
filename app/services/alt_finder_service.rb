@@ -2,7 +2,7 @@ class AltFinderService
   def self.call(main_email:)
     raise ArgumentError, "main_email cannot be blank" if main_email.blank?
 
-    user_part, domain_part = main_email.split('@', 2)
+    user_part, domain_part = main_email.split("@", 2)
     return { subscribed: [], unsubscribed: [] } unless user_part && domain_part
 
     # Construct a safe pattern for SQL ILIKE (case-insensitive).
@@ -19,18 +19,18 @@ class AltFinderService
     # not the primary app database.
     WarehouseRecord.connected_to(role: :reading) do
       base_query = LoopsAudience.where("email ILIKE ? ESCAPE '\\'", pattern)
-      
+
       subscribed = base_query
         .where(subscribed: true)
         .order(:email)
         .pluck(:email)
-      
+
       # Include both false and NULL as unsubscribed (NULL typically means unsubscribed)
       unsubscribed = base_query
         .where("subscribed = ? OR subscribed IS NULL", false)
         .order(:email)
         .pluck(:email)
-      
+
       {
         subscribed: subscribed,
         unsubscribed: unsubscribed
@@ -38,6 +38,3 @@ class AltFinderService
     end
   end
 end
-
-
-

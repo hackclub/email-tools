@@ -20,7 +20,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     ]
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -44,7 +44,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     ]
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -68,7 +68,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     ]
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -95,7 +95,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     ]
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -122,7 +122,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     ]
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -147,7 +147,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     ]
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -172,7 +172,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     ]
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -198,7 +198,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     ]
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -224,7 +224,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     ]
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -246,14 +246,14 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     adapter.expect :list_ids_with_names, []
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
 
     # Should be soft-deleted immediately (not in default scope)
     assert_nil SyncSource.find_by(id: existing.id)
-    
+
     # But should exist in with_deleted scope
     deleted = SyncSource.with_deleted.find_by(id: existing.id)
     assert_not_nil deleted
@@ -275,7 +275,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     adapter.expect :list_ids_with_names, []
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -298,14 +298,14 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     adapter.expect :list_ids_with_names, []
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
 
     # Should be soft-deleted immediately
     assert_nil SyncSource.find_by(id: existing.id)
-    
+
     # But should exist in with_deleted scope with last_seen_at set
     deleted = SyncSource.with_deleted.find_by(id: existing.id)
     assert_not_nil deleted
@@ -334,7 +334,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     adapter.expect :list_ids_with_names, []
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -367,7 +367,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     adapter.expect :list_ids_with_names, []
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -401,7 +401,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     ]
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     reconciler.call
@@ -480,7 +480,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     end
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
@@ -541,7 +541,7 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     end.new(log_messages)
 
     reconciler = DiscoveryReconciler.new(
-      adapters: [{ source: "airtable", adapter: adapter }]
+      adapters: [ { source: "airtable", adapter: adapter } ]
     )
 
     # Temporarily replace logger
@@ -556,9 +556,8 @@ class DiscoveryReconcilerTest < ActiveSupport::TestCase
     # Verify created count matches the number of sources inserted
     # The log format is: "DiscoveryReconciler[airtable]: created=5, updated=0, revived=0, deleted=0"
     assert_match(/created=5/, log_message, "Log should show created=5 for 5 new sources")
-    
+
     # Also verify the actual count matches
     assert_equal 5, SyncSource.count, "Should have created 5 sources"
   end
 end
-

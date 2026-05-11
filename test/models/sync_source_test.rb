@@ -122,4 +122,3 @@ class SyncSourceTest < ActiveSupport::TestCase
     assert_nil ss.deleted_reason
   end
 end
-

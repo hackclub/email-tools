@@ -25,7 +25,7 @@ module AiProcessors
       )
 
       # Filter to only fields we want (firstName, lastName)
-      extracted_data.select { |k, _| ['firstName', 'lastName'].include?(k) }
+      extracted_data.select { |k, _| [ "firstName", "lastName" ].include?(k) }
     end
   end
 end

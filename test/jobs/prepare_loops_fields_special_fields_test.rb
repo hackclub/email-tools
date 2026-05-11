@@ -252,7 +252,7 @@ class PrepareLoopsFieldsSpecialFieldsTest < ActiveJob::TestCase
   test "cache invalidates when schema changes" do
     # This test verifies that changing schema properties creates a new cache entry
     # We'll simulate this by modifying the schema definition
-    
+
     prompt = Ai::Prompts::ExtractFullName.call(raw_input: "Test Name")
     schema_props_original = Ai::Prompts::ExtractFullName::Schema.properties.to_json
     temp = 0
@@ -269,7 +269,7 @@ class PrepareLoopsFieldsSpecialFieldsTest < ActiveJob::TestCase
     # If schema changes, hash should be different
     # This is verified by the hash calculation including schema_props
     assert_equal 1, LlmCache.count, "Should have 1 cache entry"
-    
+
     # Verify the hash includes schema properties
     assert prompt_hash_original.length > 0, "Prompt hash should be generated"
   end
@@ -355,4 +355,3 @@ class PrepareLoopsFieldsSpecialFieldsTest < ActiveJob::TestCase
     assert_equal 2, LlmCache.count, "Should have 2 cache entries"
   end
 end
-

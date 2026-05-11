@@ -13,10 +13,10 @@ class MassUnsubscribeJob
       errors: [],
       profile_changes: []
     }
-    
+
     begin
-      all_emails = [main_email] + alt_emails
-      
+      all_emails = [ main_email ] + alt_emails
+
       # 1. Fetch contact data for all emails
       contacts_data = all_emails.map do |email|
         contacts = LoopsService.find_contact(email: email)
@@ -36,24 +36,24 @@ class MassUnsubscribeJob
 
       # 2. Use AI to merge contact fields
       merged_fields = Ai::ContactMergerService.call(contacts: contacts_data, main_email: main_email)
-      
+
       # Sanitize merged fields: remove fields that shouldn't be updated
-      merged_fields.delete('email')
-      merged_fields.delete('id')
-      merged_fields.delete('userId')
-      merged_fields.delete('subscribed') # We don't want to accidentally change subscription status of the main account
-      merged_fields.delete('unsubscribed') # Also remove unsubscribed field
-      
+      merged_fields.delete("email")
+      merged_fields.delete("id")
+      merged_fields.delete("userId")
+      merged_fields.delete("subscribed") # We don't want to accidentally change subscription status of the main account
+      merged_fields.delete("unsubscribed") # Also remove unsubscribed field
+
       # Extract mailingLists before removing it - we'll handle it separately
       # mailingLists can be very large and cause API errors, so we batch it
-      mailing_lists = merged_fields.delete('mailingLists')
+      mailing_lists = merged_fields.delete("mailingLists")
       mailing_lists = {} unless mailing_lists.is_a?(Hash)
-      
+
       # Track profile field changes (firstName, lastName, birthday, genderSelfReported, address fields)
-      profile_fields_to_track = ['firstName', 'lastName', 'birthday', 'genderSelfReported', 
-                                  'addressLine1', 'addressLine2', 'addressCity', 'addressState', 
-                                  'addressZipCode', 'addressCountry']
-      
+      profile_fields_to_track = [ "firstName", "lastName", "birthday", "genderSelfReported",
+                                  "addressLine1", "addressLine2", "addressCity", "addressState",
+                                  "addressZipCode", "addressCountry" ]
+
       # 3. Update main contact profile fields first (without mailingLists)
       # Update in batches if there are too many fields to avoid API limits
       if merged_fields.length > 50
@@ -63,7 +63,7 @@ class MassUnsubscribeJob
         merged_fields.each_slice(50).with_index do |batch, index|
           batch_hash = batch.to_h
           batch_response = LoopsService.update_contact(email: main_email, **batch_hash)
-          
+
           unless batch_response && batch_response["success"] == true
             error_msg = "Failed to update main contact #{main_email} profile fields in batch #{index + 1}"
             Rails.logger.error("MassUnsubscribeJob: #{error_msg}")
@@ -71,10 +71,10 @@ class MassUnsubscribeJob
             # Continue with remaining batches, but track the failure
             next
           end
-          
+
           batch_responses << batch_response
         end
-        
+
         # Check if any batch succeeded
         if batch_responses.empty?
           error_msg = "All profile field batch updates failed for main contact #{main_email}"
@@ -83,7 +83,7 @@ class MassUnsubscribeJob
           send_results_email(main_email, results)
           raise "Failed to update main contact"
         end
-        
+
         # Use the last successful response (or generate an ID if needed)
         update_response = batch_responses.last
         # Ensure we have an ID for audit logs
@@ -97,7 +97,7 @@ class MassUnsubscribeJob
           update_response = { "success" => true, "id" => SecureRandom.uuid }
         end
       end
-      
+
       unless update_response && update_response["success"] == true
         error_msg = "Failed to update main contact #{main_email} profile fields"
         Rails.logger.error("MassUnsubscribeJob: #{error_msg}")
@@ -110,16 +110,16 @@ class MassUnsubscribeJob
       if mailing_lists.any?
         # Filter to only subscribed lists (value is true)
         subscribed_lists = mailing_lists.select { |_id, subscribed| subscribed == true }
-        
+
         if subscribed_lists.any?
           Rails.logger.info("MassUnsubscribeJob: Updating #{subscribed_lists.length} mailing lists in batches of 10")
-          
+
           # Convert hash to array of [key, value] pairs, batch into groups of 10, then convert back to hash
           subscribed_lists.to_a.each_slice(10).with_index do |batch, index|
             # Convert array of [key, value] pairs back to hash
             batch_hash = { "mailingLists" => batch.to_h }
             batch_response = LoopsService.update_contact(email: main_email, **batch_hash)
-            
+
             unless batch_response && batch_response["success"] == true
               error_msg = "Failed to update main contact #{main_email} mailing lists in batch #{index + 1}"
               Rails.logger.error("MassUnsubscribeJob: #{error_msg}")
@@ -127,7 +127,7 @@ class MassUnsubscribeJob
               # Continue with remaining batches, but track the failure
               next
             end
-            
+
             Rails.logger.info("MassUnsubscribeJob: Successfully updated mailing lists batch #{index + 1} (#{batch.length} lists)")
           end
         end
@@ -141,7 +141,7 @@ class MassUnsubscribeJob
       # Only create audit logs for fields that actually changed
       merged_fields.each do |field_name, new_value|
         former_value = current_profile[field_name] if current_profile.is_a?(Hash)
-        
+
         # Get baseline for former value if not in current profile
         baseline = LoopsFieldBaseline.find_or_create_baseline(
           email_normalized: main_email_normalized,
@@ -151,26 +151,26 @@ class MassUnsubscribeJob
 
         # Normalize values for comparison (handle nil, empty strings, arrays, hashes)
         former_normalized = case former_loops_value
-          when nil
+        when nil
             nil
-          when String
+        when String
             former_loops_value.strip
-          when Array, Hash
+        when Array, Hash
             former_loops_value.to_json
-          else
+        else
             former_loops_value
-          end
+        end
 
         new_normalized = case new_value
-          when nil
+        when nil
             nil
-          when String
+        when String
             new_value.strip
-          when Array, Hash
+        when Array, Hash
             new_value.to_json
-          else
+        else
             new_value
-          end
+        end
 
         # Skip creating audit log if values are the same
         next if former_normalized == new_normalized
@@ -214,9 +214,9 @@ class MassUnsubscribeJob
           results[:already_unsubscribed] << alt
           next
         end
-        
+
         unsubscribe_response = LoopsService.update_contact(email: alt, subscribed: false)
-        
+
         unless unsubscribe_response && unsubscribe_response["success"] == true
           error_msg = "Failed to unsubscribe #{alt}"
           Rails.logger.error("MassUnsubscribeJob: #{error_msg}")
@@ -264,10 +264,10 @@ class MassUnsubscribeJob
 
   def send_results_email(main_email, results)
     transactional_id = ENV.fetch("LOOPS_ALT_UNSUBSCRIBE_RESULTS_TRANSACTIONAL_ID")
-    
+
     # Build email body
     body_parts = []
-    
+
     # Unsubscribed emails
     if results[:unsubscribed].any?
       body_parts << "Successfully unsubscribed #{results[:unsubscribed].length} alternate email(s):"
@@ -276,7 +276,7 @@ class MassUnsubscribeJob
       end
       body_parts << ""
     end
-    
+
     # Already unsubscribed emails
     if results[:already_unsubscribed].any?
       body_parts << "The following #{results[:already_unsubscribed].length} email(s) were already unsubscribed:"
@@ -285,7 +285,7 @@ class MassUnsubscribeJob
       end
       body_parts << ""
     end
-    
+
     # Profile changes
     if results[:profile_changes].any?
       body_parts << "Profile information was updated:"
@@ -297,7 +297,7 @@ class MassUnsubscribeJob
       end
       body_parts << ""
     end
-    
+
     # Errors
     if results[:errors].any?
       body_parts << "Errors encountered:"
@@ -306,26 +306,26 @@ class MassUnsubscribeJob
       end
       body_parts << ""
     end
-    
+
     # If nothing happened
-    if results[:unsubscribed].empty? && results[:already_unsubscribed].empty? && 
+    if results[:unsubscribed].empty? && results[:already_unsubscribed].empty? &&
        results[:profile_changes].empty? && results[:errors].empty?
       body_parts << "No changes were made to your account."
     end
-    
+
     body = body_parts.join("\n")
-    
+
     begin
       Rails.logger.info("MassUnsubscribeJob: Attempting to send results email to #{main_email}")
       Rails.logger.info("MassUnsubscribeJob: Transactional ID: #{transactional_id}")
       Rails.logger.info("MassUnsubscribeJob: Email body length: #{body.length} characters")
-      
+
       response = LoopsService.send_transactional_email(
         email: main_email,
         transactional_id: transactional_id,
         data_variables: { body: body }
       )
-      
+
       Rails.logger.info("MassUnsubscribeJob: Sent results email to #{main_email}, response: #{response.inspect}")
       logger.info("MassUnsubscribeJob: Sent results email to #{main_email}") if respond_to?(:logger)
     rescue => e
@@ -344,4 +344,3 @@ class MassUnsubscribeJob
     value.to_s
   end
 end
-

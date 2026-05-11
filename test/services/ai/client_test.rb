@@ -200,4 +200,3 @@ class Ai::ClientTest < ActiveSupport::TestCase
     assert_equal temp, cache_entry.request_json["temp"]
   end
 end
-

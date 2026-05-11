@@ -25,4 +25,3 @@ module ValueNormalizer
     v
   end
 end
-

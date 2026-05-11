@@ -344,7 +344,7 @@ module Pollers
           "id" => "rec123",
           "fields" => {
             "email" => "test@example.com",
-            "Loops - firstName" => ["test"] # Array value from Airtable
+            "Loops - firstName" => [ "test" ] # Array value from Airtable
           }
         }
       ]
@@ -370,7 +370,7 @@ module Pollers
       # Verify the value in changed_values is normalized to "test" (not ["test"])
       changed_value_data = changed_records.first[:changedValues].values.first
       assert_equal "test", changed_value_data["value"], "Value should be normalized from array to string"
-      assert_not_equal ["test"], changed_value_data["value"], "Value should not be an array"
+      assert_not_equal [ "test" ], changed_value_data["value"], "Value should not be an array"
 
       # Verify baseline stores normalized value
       baseline = FieldValueBaseline.where(sync_source: @sync_source).first

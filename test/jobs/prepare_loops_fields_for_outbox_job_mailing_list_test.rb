@@ -44,14 +44,14 @@ class PrepareLoopsFieldsForOutboxJobMailingListTest < ActiveJob::TestCase
     envelope = LoopsOutboxEnvelope.last
     assert_not_nil envelope
     assert envelope.payload.key?("mailingLists"), "Payload should have mailingLists key. Payload: #{envelope.payload.inspect}"
-    
+
     mailing_lists = envelope.payload["mailingLists"]
     assert_not_nil mailing_lists, "mailingLists should not be nil"
-    
+
     # JSONB stores keys as strings, so check both string and symbol access
     strategy = mailing_lists[:strategy] || mailing_lists["strategy"]
     value = mailing_lists[:value] || mailing_lists["value"]
-    
+
     assert_equal "override", strategy.to_s, "Strategy should be override"
     assert_equal({ "list1" => true, "list2" => true, "list3" => true }, value)
   end
@@ -173,10 +173,10 @@ class PrepareLoopsFieldsForOutboxJobMailingListTest < ActiveJob::TestCase
 
     envelope = LoopsOutboxEnvelope.last
     field_provenance = envelope.provenance["fields"]&.first
-    
+
     assert_not_nil field_provenance
     assert_equal "mailingLists", field_provenance["derived_to_loops_field"]
-    assert_equal ["list1", "list2"], field_provenance["mailing_list_ids"]
+    assert_equal [ "list1", "list2" ], field_provenance["mailing_list_ids"]
   end
 
   test "handles single list ID" do
@@ -204,4 +204,3 @@ class PrepareLoopsFieldsForOutboxJobMailingListTest < ActiveJob::TestCase
     assert_equal({ "list1" => true }, value)
   end
 end
-

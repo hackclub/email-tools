@@ -25,8 +25,8 @@ module AiProcessors
       )
 
       # Filter to only fields we want
-      extracted_data.select { |k, _| 
-        ['addressLine1', 'addressLine2', 'addressCity', 'addressState', 'addressZipCode', 'addressCountry'].include?(k)
+      extracted_data.select { |k, _|
+        [ "addressLine1", "addressLine2", "addressCity", "addressState", "addressZipCode", "addressCountry" ].include?(k)
       }
     end
   end

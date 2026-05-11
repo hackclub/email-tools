@@ -16,9 +16,8 @@ class CreateLoopsListTables < ActiveRecord::Migration[8.0]
       t.datetime   :subscribed_at,    null: false, default: -> { "CURRENT_TIMESTAMP" }
       t.timestamps
     end
-    add_index :loops_list_subscriptions, [:email_normalized, :list_id],
+    add_index :loops_list_subscriptions, [ :email_normalized, :list_id ],
               unique: true, name: "idx_unique_loops_list_subscriptions"
     add_index :loops_list_subscriptions, :email_normalized
   end
 end
-

@@ -3,7 +3,7 @@ class SyncSourcesController < ApplicationController
 
   def index
     @source = params[:source].presence
-    
+
     unless @source.present?
       @error = "Source parameter is required. Please select a source type."
       @source_items = []
@@ -14,7 +14,7 @@ class SyncSourcesController < ApplicationController
       @deleted_sources = []
       return
     end
-    
+
     # Fetch sources using adapter pattern
     begin
       adapter = adapter_for_source(@source)
@@ -25,21 +25,21 @@ class SyncSourcesController < ApplicationController
         @source_items = []
         @error = "No adapter available for source: #{@source}"
       end
-      
+
       @sync_sources_by_source_id = SyncSource.where(source: @source).index_by(&:source_id)
-      
+
       # Build ignored set: use centralized IgnoreMatcher service
       @matcher = IgnoreMatcher.for(source: @source)
-      
+
       @ignored = Set.new
       @source_items.each do |source_item|
         if @matcher.match?(source_item["id"])
           @ignored.add(source_item["id"])
         end
       end
-      
+
       @pattern_ignores = SyncSourceIgnore.where(source: @source).to_a
-      
+
       # Load deleted sources for UI
       @deleted_sources = SyncSource.only_deleted.where(source: @source).order(:display_name)
 
@@ -78,12 +78,12 @@ class SyncSourcesController < ApplicationController
 
   def new
     @source = params[:source].presence
-    
+
     unless @source.present?
       redirect_to admin_sync_sources_path, alert: "Source parameter is required."
       return
     end
-    
+
     @sync_source = sync_source_class_for(@source).new
     @source_id = params[:source_id]
 
@@ -107,12 +107,12 @@ class SyncSourcesController < ApplicationController
 
   def create
     @source = params[:source].presence
-    
+
     unless @source.present?
       redirect_to admin_sync_sources_path, alert: "Source parameter is required."
       return
     end
-    
+
     @sync_source = sync_source_class_for(@source).new(sync_source_params)
     @sync_source.source = @source
 
@@ -184,15 +184,15 @@ class SyncSourcesController < ApplicationController
     source = params[:source].presence
     source_id = params[:source_id]
     pattern = params[:pattern] # For UI form - pattern field
-    
+
     unless source.present?
       redirect_to admin_sync_sources_path, alert: "Source parameter is required."
       return
     end
-    
+
     # Use pattern if provided (from UI form), otherwise use source_id (from button click)
     regex_pattern = pattern.presence || source_id
-    
+
     unless regex_pattern.present?
       redirect_to admin_sync_sources_path(source: source), alert: "Pattern/Source ID is required"
       return
@@ -211,11 +211,11 @@ class SyncSourcesController < ApplicationController
     end
 
     # Soft-delete any active sync sources that match this pattern
-    new_matcher = IgnoreMatcher.new([ignore_record])
-    
+    new_matcher = IgnoreMatcher.new([ ignore_record ])
+
     # Pluck IDs and source_ids to avoid loading all records into memory
     source_ids_to_check = SyncSource.where(source: source).pluck(:id, :source_id)
-    
+
     matching_source_ids = source_ids_to_check.filter_map do |id, source_id|
       id if new_matcher.match?(source_id)
     end
@@ -291,7 +291,7 @@ class SyncSourcesController < ApplicationController
   def available_sources
     # Return list of available source types
     # Currently only airtable is supported, but this makes it easy to add more
-    ["airtable"]
+    [ "airtable" ]
   end
   helper_method :available_sources
 end

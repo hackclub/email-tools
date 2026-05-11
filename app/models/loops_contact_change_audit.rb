@@ -3,7 +3,7 @@ class LoopsContactChangeAudit < ApplicationRecord
 
   validates :occurred_at, :email_normalized, :field_name, presence: true
   validates :sync_source_id, presence: true, unless: :is_self_service?
-  validates :is_self_service, inclusion: { in: [true, false] }
+  validates :is_self_service, inclusion: { in: [ true, false ] }
 
   scope :for_email, ->(email) { where(email_normalized: email) }
   scope :for_sync_source, ->(source) { where(sync_source_id: source.id) }

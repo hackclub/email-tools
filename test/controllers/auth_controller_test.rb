@@ -4,17 +4,17 @@ require "minitest/mock"
 class AuthControllerTest < ActionDispatch::IntegrationTest
   def setup
     skip "Redis not available" unless REDIS_FOR_RATE_LIMITING.ping
-    
+
     @email = "test@example.com"
     @email_normalized = EmailNormalizer.normalize(@email)
-    
+
     # Clear rate limits
     REDIS_FOR_RATE_LIMITING.del("rate:otp:#{@email_normalized}")
-    
+
     # Clean up
     OtpVerification.where(email_normalized: @email_normalized).delete_all
     AuthenticatedSession.where(email_normalized: @email_normalized).delete_all
-    
+
     # Set test transactional ID
     @original_transactional_id = ENV["LOOPS_OTP_TRANSACTIONAL_ID"]
     ENV["LOOPS_OTP_TRANSACTIONAL_ID"] = "test_transactional_id"
@@ -24,7 +24,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
     REDIS_FOR_RATE_LIMITING.del("rate:otp:#{@email_normalized}")
     OtpVerification.where(email_normalized: @email_normalized).delete_all
     AuthenticatedSession.where(email_normalized: @email_normalized).delete_all
-    
+
     ENV["LOOPS_OTP_TRANSACTIONAL_ID"] = @original_transactional_id if @original_transactional_id
   end
 
@@ -43,7 +43,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
       end
       post auth_otp_verify_path, params: { code: code }
     end
-    
+
     # Now accessing OTP request should redirect
     get auth_otp_request_path
     assert_redirected_to profile_edit_path
@@ -52,10 +52,10 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
   test "request_otp generates and sends OTP" do
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
       post auth_otp_request_path, params: { email: @email }
-      
+
       assert_redirected_to auth_otp_verify_path
       assert_equal "OTP code sent to your email. Please check your inbox.", flash[:notice]
-      
+
       # Verify OTP was created
       otp = OtpVerification.last
       assert_equal @email_normalized, otp.email_normalized
@@ -64,7 +64,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
 
   test "request_otp requires email" do
     post auth_otp_request_path, params: { email: "" }
-    
+
     assert_redirected_to auth_otp_request_path
     assert_equal "Email is required", flash[:error]
   end
@@ -74,10 +74,10 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
     3.times do
       AuthenticationService.generate_otp(@email)
     end
-    
+
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
       post auth_otp_request_path, params: { email: @email }
-      
+
       assert_redirected_to auth_otp_request_path
       assert_match(/Too many OTP requests/i, flash[:error])
     end
@@ -91,7 +91,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
   test "verify_otp creates session and redirects" do
     # Generate OTP code first
     code = AuthenticationService.generate_otp(@email)
-    
+
     # Now stub generate_otp to return the same code when request_otp is called
     AuthenticationService.stub(:generate_otp, ->(email) { code }) do
       LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
@@ -99,13 +99,13 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
         assert_redirected_to auth_otp_verify_path
       end
     end
-    
+
     # Verify OTP (session should persist from previous request)
     post auth_otp_verify_path, params: { code: code }
-    
+
     assert_redirected_to profile_edit_path
     assert_equal "Successfully authenticated!", flash[:notice]
-    
+
     # Verify session was created
     session = AuthenticatedSession.last
     assert_equal @email_normalized, session.email_normalized
@@ -116,10 +116,10 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
       post auth_otp_request_path, params: { email: @email }
       assert_redirected_to auth_otp_verify_path
     end
-    
+
     # Session should persist, so we can verify with wrong code
     post auth_otp_verify_path, params: { code: "0000" }
-    
+
     assert_redirected_to auth_otp_verify_path
     assert_match(/Invalid/i, flash[:error])
   end
@@ -129,10 +129,10 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
       post auth_otp_request_path, params: { email: @email }
       assert_redirected_to auth_otp_verify_path
     end
-    
+
     # Session should persist
     post auth_otp_verify_path, params: { code: "" }
-    
+
     assert_redirected_to auth_otp_verify_path
     assert_equal "OTP code is required", flash[:error]
   end
@@ -140,26 +140,26 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
   test "verify_otp rotates session to prevent fixation" do
     # Generate OTP code first
     code = AuthenticationService.generate_otp(@email)
-    
+
     # Request OTP (sets session[:otp_email])
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
       AuthenticationService.stub(:generate_otp, ->(email) { code }) do
         post auth_otp_request_path, params: { email: @email }
       end
     end
-    
+
     # Store old session data to verify it gets cleared
     # Note: In Rails integration tests, we can't directly access session.id,
     # but we can verify that reset_session works by checking that auth still succeeds
-    
+
     # Verify OTP - should reset session before setting auth_token
     post auth_otp_verify_path, params: { code: code }
-    
+
     assert_redirected_to profile_edit_path
     assert_equal "Successfully authenticated!", flash[:notice]
-    
+
     # Verify we can access protected route (proves session was rotated and auth_token was set)
-    LoopsService.stub(:find_contact, ->(**args) { [{ "firstName" => "Test" }] }) do
+    LoopsService.stub(:find_contact, ->(**args) { [ { "firstName" => "Test" } ] }) do
       get profile_edit_path
       assert_response :success
     end
@@ -167,23 +167,23 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
 
   test "verify_otp locks out after 5 failed attempts" do
     code = AuthenticationService.generate_otp(@email)
-    
+
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
       post auth_otp_request_path, params: { email: @email }
     end
-    
+
     # Make 5 failed attempts
     5.times do
       post auth_otp_verify_path, params: { code: "0000" }
       assert_redirected_to auth_otp_verify_path
       assert_match(/Invalid/i, flash[:error])
     end
-    
+
     # 6th attempt should be locked out
     post auth_otp_verify_path, params: { code: "0000" }
     assert_redirected_to auth_otp_verify_path
     assert_match(/Too many failed attempts/i, flash[:error])
-    
+
     # Even correct code should fail after lockout
     post auth_otp_verify_path, params: { code: code }
     assert_redirected_to auth_otp_verify_path
@@ -193,7 +193,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
   test "show_otp_request rejects absolute URLs in redirect_to parameter" do
     # Test with external absolute URL
     get auth_otp_request_path, params: { redirect_to: "https://evil.com/phishing" }
-    
+
     # Should store safe fallback, not the malicious URL
     assert_not_equal "https://evil.com/phishing", session[:redirect_after_auth]
     assert_equal profile_edit_path, session[:redirect_after_auth]
@@ -202,7 +202,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
   test "show_otp_request accepts relative paths in redirect_to parameter" do
     # Test with relative path
     get auth_otp_request_path, params: { redirect_to: "/alts" }
-    
+
     # Should store the relative path
     assert_equal "/alts", session[:redirect_after_auth]
   end
@@ -210,7 +210,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
   test "show_otp_request rejects protocol-relative URLs" do
     # Test with protocol-relative URL (//evil.com)
     get auth_otp_request_path, params: { redirect_to: "//evil.com/phishing" }
-    
+
     # Should fallback to safe path
     assert_equal profile_edit_path, session[:redirect_after_auth]
   end
@@ -218,7 +218,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
   test "show_otp_request rejects URLs with host" do
     # Test with URL that has host but no protocol
     get auth_otp_request_path, params: { redirect_to: "evil.com/phishing" }
-    
+
     # Should fallback to safe path
     assert_equal profile_edit_path, session[:redirect_after_auth]
   end
@@ -226,21 +226,21 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
   test "verify_otp prevents open redirect with absolute URL" do
     # Set up OTP flow
     code = AuthenticationService.generate_otp(@email)
-    
+
     # Try to set malicious redirect through show_otp_request (will be sanitized)
     get auth_otp_request_path, params: { redirect_to: "https://evil.com/phishing" }
     # Should have stored safe fallback, not malicious URL
     assert_equal profile_edit_path, session[:redirect_after_auth]
-    
+
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
       AuthenticationService.stub(:generate_otp, ->(email) { code }) do
         post auth_otp_request_path, params: { email: @email }
       end
     end
-    
+
     # Verify OTP - should redirect to safe path, not malicious URL
     post auth_otp_verify_path, params: { code: code }
-    
+
     assert_redirected_to profile_edit_path
     assert_not_equal "https://evil.com/phishing", @response.redirect_url
   end
@@ -248,19 +248,19 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
   test "verify_otp allows relative paths" do
     # Set up OTP flow
     code = AuthenticationService.generate_otp(@email)
-    
+
     # Store safe relative path
     get auth_otp_request_path, params: { redirect_to: "/alts" }
-    
+
     LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
       AuthenticationService.stub(:generate_otp, ->(email) { code }) do
         post auth_otp_request_path, params: { email: @email }
       end
     end
-    
+
     # Verify OTP - should redirect to the relative path
     post auth_otp_verify_path, params: { code: code }
-    
+
     assert_redirected_to "/alts"
   end
 
@@ -273,7 +273,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
       end
       post auth_otp_verify_path, params: { code: code }
     end
-    
+
     # Try to set malicious redirect when accessing as authenticated user
     # Should sanitize and redirect to safe path, not malicious URL
     get auth_otp_request_path, params: { redirect_to: "https://evil.com/phishing" }
@@ -337,7 +337,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
     session[:redirect_after_auth] = "/some/path"
     session[:otp_email] = "test@example.com"
     session[:change_email_to] = "new@example.com"
-    
+
     # Capture session state before logout
     session_hash_before = session.to_hash.dup
 
@@ -349,7 +349,7 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
     assert_nil session[:redirect_after_auth]
     assert_nil session[:otp_email]
     assert_nil session[:change_email_to]
-    
+
     # Session hash should be different (rotated)
     session_hash_after = session.to_hash
     # Rails internals may remain, but our custom keys should be gone
@@ -575,4 +575,3 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to profile_edit_path
   end
 end
-

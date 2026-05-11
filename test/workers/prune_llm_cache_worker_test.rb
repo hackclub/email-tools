@@ -68,7 +68,7 @@ class PruneLlmCacheWorkerTest < ActiveSupport::TestCase
     end
 
     # Stub ENV to return a small test limit
-    ENV.stub(:fetch, 1, ["LLM_CACHE_MAX_MB", LlmCache::DEFAULT_MAX_CACHE_MB]) do
+    ENV.stub(:fetch, 1, [ "LLM_CACHE_MAX_MB", LlmCache::DEFAULT_MAX_CACHE_MB ]) do
       PruneLlmCacheWorker.new.perform
     end
 
@@ -106,7 +106,7 @@ class PruneLlmCacheWorkerTest < ActiveSupport::TestCase
       created_at: 31.days.ago # Would be kept with default 90, but deleted with 30
     )
 
-    ENV.stub(:fetch, "30", ["LLM_CACHE_PRUNING_WINDOW_DAYS", LlmCache::DEFAULT_PRUNING_WINDOW_DAYS]) do
+    ENV.stub(:fetch, "30", [ "LLM_CACHE_PRUNING_WINDOW_DAYS", LlmCache::DEFAULT_PRUNING_WINDOW_DAYS ]) do
       PruneLlmCacheWorker.new.perform
     end
 
@@ -129,7 +129,7 @@ class PruneLlmCacheWorkerTest < ActiveSupport::TestCase
     end
 
     # Override with ENV
-    ENV.stub(:fetch, "1", ["LLM_CACHE_MAX_MB", LlmCache::DEFAULT_MAX_CACHE_MB]) do
+    ENV.stub(:fetch, "1", [ "LLM_CACHE_MAX_MB", LlmCache::DEFAULT_MAX_CACHE_MB ]) do
       PruneLlmCacheWorker.new.perform
     end
 

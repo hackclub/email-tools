@@ -37,6 +37,3 @@ module Ai
     end
   end
 end
-
-
-

@@ -1,12 +1,12 @@
 class AuthController < ApplicationController
   skip_before_action :authenticate_admin
-  before_action :require_authenticated_session, only: [:show_change_email, :change_email_request_otp]
+  before_action :require_authenticated_session, only: [ :show_change_email, :change_email_request_otp ]
 
   def show_otp_request
     # Check if user is already authenticated
     token = session[:auth_token]
     email = AuthenticationService.validate_session(token)
-    
+
     if email
       # Already authenticated, redirect to intended destination or profile edit
       destination = safe_path(session[:redirect_after_auth] || profile_edit_path)
@@ -15,12 +15,12 @@ class AuthController < ApplicationController
       redirect_to destination
       return
     end
-    
+
     # Store redirect destination if provided
     if params[:redirect_to].present?
       session[:redirect_after_auth] = safe_path(params[:redirect_to])
     end
-    
+
     # Store auth purpose based on redirect destination for context-aware UI
     # Only set if not already set (e.g., from require_authenticated_session)
     unless session[:auth_purpose].present?
@@ -31,7 +31,7 @@ class AuthController < ApplicationController
         session[:auth_purpose] = "profile_update"
       end
     end
-    
+
     # Not authenticated, show OTP request form
   end
 
@@ -227,29 +227,28 @@ class AuthController < ApplicationController
 
   def safe_path(path)
     return profile_edit_path if path.blank?
-    
+
     path_str = path.to_s.strip
-    
+
     # Reject protocol-relative URLs (//evil.com)
     return profile_edit_path if path_str.start_with?("//")
-    
+
     # Reject absolute URLs with protocol (https://, http://, etc.)
     return profile_edit_path if path_str.match?(/\A[a-z][a-z0-9+.-]*:/i)
-    
+
     # Parse as URI to check for host component
     uri = URI.parse(path_str) rescue nil
-    
+
     # Reject if URI parsing failed
     return profile_edit_path unless uri
-    
+
     # Reject if URI has a host (absolute URL)
     return profile_edit_path if uri.host.present?
-    
+
     # Reject if path doesn't start with "/" (relative paths must start with /)
     return profile_edit_path unless uri.path&.start_with?("/")
-    
+
     # Accept relative paths that start with "/"
     uri.to_s
   end
 end
-

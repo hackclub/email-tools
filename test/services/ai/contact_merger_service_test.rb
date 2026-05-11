@@ -17,7 +17,7 @@ module Ai
           "firstName" => "Zach",
           "lastName" => "Latta",
           "createdAt" => "2021-01-01T00:00:00Z",
-          "tags" => ["test-tag"]
+          "tags" => [ "test-tag" ]
         }
       ]
     end
@@ -28,7 +28,7 @@ module Ai
         "firstName" => "Zach",
         "lastName" => "Latta",
         "createdAt" => "2020-01-01T00:00:00Z", # Oldest date
-        "tags" => ["test-tag"]
+        "tags" => [ "test-tag" ]
       }
 
       # Mock 3 identical AI calls
@@ -154,4 +154,3 @@ module Ai
     end
   end
 end
-

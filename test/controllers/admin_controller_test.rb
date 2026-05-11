@@ -56,4 +56,3 @@ class AdminControllerTest < ActionDispatch::IntegrationTest
     { "HTTP_AUTHORIZATION" => credentials }
   end
 end
-

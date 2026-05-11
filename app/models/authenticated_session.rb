@@ -29,4 +29,3 @@ class AuthenticatedSession < ApplicationRecord
     self.expires_at ||= 1.hour.from_now
   end
 end
-

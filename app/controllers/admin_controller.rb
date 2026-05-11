@@ -3,4 +3,3 @@ class AdminController < ApplicationController
     redirect_to admin_emails_path
   end
 end
-
