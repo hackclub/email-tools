@@ -467,6 +467,10 @@ input.otp-code {
   font-size: 14px;
 }
 
+.footer-copy {
+  margin: 0;
+}
+
 .footer a {
   color: var(--hc-primary);
   text-decoration: none;
@@ -474,6 +478,35 @@ input.otp-code {
 
 .footer a:hover {
   text-decoration: underline;
+}
+
+.footer-inline-form {
+  display: inline-block;
+  margin-top: var(--hc-space-sm);
+}
+
+.footer-link-button {
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--hc-primary);
+  font: inherit;
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 0.0925em;
+}
+
+.footer-link-button:hover,
+.footer-link-button:focus {
+  background: none;
+  box-shadow: none;
+  text-decoration-style: wavy;
+  transform: none;
+}
+
+.footer-link-button:active {
+  transform: none;
 }
 
 /* Utilities */

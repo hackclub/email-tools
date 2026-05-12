@@ -1,5 +1,12 @@
 <div class="footer">
-  You're logged in with <strong><%= current_authenticated_email %></strong>. 
-  <%= link_to "Change email", auth_change_email_path %>.
-</div>
+  <p class="footer-copy">
+    You're logged in with <strong><%= current_authenticated_email %></strong>.
+    <%= link_to "Change email", auth_change_email_path %>
+  </p>
 
+  <%= button_to "Log out",
+      auth_logout_path,
+      method: :delete,
+      form_class: "footer-inline-form",
+      class: "footer-link-button" %>
+</div>

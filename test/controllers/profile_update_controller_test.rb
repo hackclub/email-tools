@@ -186,6 +186,17 @@ class ProfileUpdateControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to auth_otp_request_path
   end
 
+  test "edit shows logout control when authenticated" do
+    authenticate_user
+
+    with_loops_http_stub do
+      get profile_edit_path
+      assert_response :success
+      assert_match(/Log out/i, response.body)
+      assert_match(/#{Regexp.escape(auth_logout_path)}/, response.body)
+    end
+  end
+
   test "update requires authentication" do
     patch profile_path, params: { firstName: "Jane" }
     assert_redirected_to auth_otp_request_path
