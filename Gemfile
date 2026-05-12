@@ -1,7 +1,7 @@
 source "https://rubygems.org"
 
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
-gem "rails", "~> 8.0.4"
+gem "rails", "~> 8.1.3"
 # The modern asset pipeline for Rails [https://github.com/rails/propshaft]
 gem "propshaft"
 # Use postgresql as the database for Active Record
@@ -27,7 +27,7 @@ gem "tzinfo-data", platforms: %i[ windows jruby ]
 gem "redis", "~> 5.0"
 
 # Use Sidekiq for background jobs
-gem "sidekiq", "~> 7.3"
+gem "sidekiq", "~> 8.1"
 gem "sidekiq-scheduler" # seconds-level schedules like every 15s
 
 # HTTP client for API requests
