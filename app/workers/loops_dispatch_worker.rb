@@ -161,7 +161,11 @@ class LoopsDispatchWorker
               )
             end
           end
-          # Re-raise to mark job as failed
+          if e.status_code.between?(400, 499)
+            Rails.logger.warn("LoopsDispatchWorker: Permanent preflight error (HTTP #{e.status_code}) for #{email_normalized}, not retrying: #{e.message}")
+            return
+          end
+
           raise
         end
 
@@ -253,7 +257,13 @@ class LoopsDispatchWorker
             end
           end
 
-          # Re-raise exception after ensuring envelopes are marked as failed
+          # Don't retry permanent API errors (4xx) — the data is wrong and retrying won't fix it
+          # 429 rate limits are already handled internally by LoopsService
+          if e.is_a?(LoopsService::ApiError) && e.status_code.between?(400, 499)
+            Rails.logger.warn("LoopsDispatchWorker: Permanent API error (HTTP #{e.status_code}) for #{email_normalized}, not retrying: #{e.message}")
+            return
+          end
+
           raise
         end
 
@@ -504,7 +514,11 @@ class LoopsDispatchWorker
             end
           end
         end
-        # Re-raise to mark job as failed
+        if e.is_a?(LoopsService::ApiError) && e.status_code.between?(400, 499)
+          Rails.logger.warn("LoopsDispatchWorker: Permanent error (HTTP #{e.status_code}) for #{email_normalized}, not retrying: #{e.message}")
+          return
+        end
+
         raise
       ensure
         # Always release the lock
