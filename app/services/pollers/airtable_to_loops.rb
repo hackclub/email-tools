@@ -336,35 +336,34 @@ module Pollers
 
     # Logging helpers
     def log_header(message)
-      puts "\n=== #{message} ===\n"
+      Rails.logger.debug { "\n=== #{message} ===\n" }
     end
 
     def log_section(message)
-      puts "\n" + "=" * 80
-      puts message
-      puts "=" * 80
+      Rails.logger.debug { "\n" + "=" * 80 + "\n#{message}\n" + "=" * 80 }
     end
 
     def log_info(message)
-      puts message
+      Rails.logger.debug { message }
     end
 
     def log_error(message)
-      puts "ERROR: #{message}"
+      Rails.logger.debug { "ERROR: #{message}" }
     end
 
     def log_schema(table)
-      puts "\nSchema:"
-      puts "-" * 80
-      puts "Fields:"
-      if table["fields"] && table["fields"].any?
-        table["fields"].each do |field|
-          field_type = field["type"] || "unknown"
-          field_name = field["name"] || field["id"]
-          puts "  - #{field_name} (#{field_type})"
+      Rails.logger.debug do
+        lines = [ "\nSchema:", "-" * 80, "Fields:" ]
+        if table["fields"] && table["fields"].any?
+          table["fields"].each do |field|
+            field_type = field["type"] || "unknown"
+            field_name = field["name"] || field["id"]
+            lines << "  - #{field_name} (#{field_type})"
+          end
+        else
+          lines << "  (no fields found)"
         end
-      else
-        puts "  (no fields found)"
+        lines.join("\n")
       end
     end
 
