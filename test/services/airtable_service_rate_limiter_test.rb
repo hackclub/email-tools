@@ -133,23 +133,25 @@ class AirtableServiceRateLimiterTest < ActiveSupport::TestCase
     end
   end
 
-  test "per-base rate limiter enforces 5 req/sec window" do
-    # Deterministic check against the limiter itself (no API): five slots are
-    # immediate, the sixth must wait for the 1s window to free up.
+  test "per-base rate limiter enforces the configured per-second window" do
+    # Deterministic check against the limiter itself (no API): the configured
+    # number of slots are immediate, the next acquire must wait for the 1s
+    # window to free up. Uses the same limit the app configures per base.
+    limit = AirtableService::PER_BASE_RATE_LIMIT
     key = "rate:test:per-base-window:#{SecureRandom.hex(4)}"
-    limiter = RateLimiter.new(redis: REDIS_FOR_RATE_LIMITING, key: key, limit: 5, period: 1.0)
+    limiter = RateLimiter.new(redis: REDIS_FOR_RATE_LIMITING, key: key, limit: limit, period: 1.0)
 
     start = Time.now
-    5.times { limiter.acquire! }
-    first_five_duration = Time.now - start
+    limit.times { limiter.acquire! }
+    allowed_duration = Time.now - start
 
-    sixth_start = Time.now
+    over_start = Time.now
     limiter.acquire!
-    sixth_duration = Time.now - sixth_start
+    over_duration = Time.now - over_start
 
-    assert first_five_duration < 0.5, "First five acquires should be immediate, took #{first_five_duration}s"
-    assert sixth_duration >= 0.4, "Sixth acquire should wait for the sliding window, took #{sixth_duration}s"
-    assert sixth_duration < 2.0, "Sixth acquire should not wait more than one window, took #{sixth_duration}s"
+    assert allowed_duration < 0.5, "First #{limit} acquires should be immediate, took #{allowed_duration}s"
+    assert over_duration >= 0.4, "Acquire #{limit + 1} should wait for the sliding window, took #{over_duration}s"
+    assert over_duration < 2.0, "Acquire #{limit + 1} should not wait more than one window, took #{over_duration}s"
   ensure
     REDIS_FOR_RATE_LIMITING.del(key)
     REDIS_FOR_RATE_LIMITING.del("#{key}:seq")

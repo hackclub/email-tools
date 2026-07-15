@@ -2,6 +2,12 @@ class AirtableService
   API_URL = "https://api.airtable.com/v0"
   META_API_URL = "#{API_URL}/meta"
 
+  # Airtable's documented per-base limit is 5 req/s. We deliberately stay
+  # under it so automations and humans touching the same bases keep some
+  # of that budget; going below ~2 serializes multi-table polls though —
+  # the old 1 req/s limit added a full second to every request of a poll.
+  PER_BASE_RATE_LIMIT = 2
+
   def self.api_token
     ENV.fetch("AIRTABLE_PERSONAL_ACCESS_TOKEN")
   end
@@ -77,15 +83,12 @@ class AirtableService
     end
 
     # Get or create a per-base rate limiter
-    # Limit: 5 requests per second per base (Airtable's documented per-base
-    # limit). Throttling below that serializes multi-table polls: each extra
-    # request per base used to add a full second to every poll.
     def rate_limiter_for_base(base_id)
       @base_limiters ||= {}
       @base_limiters[base_id] ||= RateLimiter.new(
         redis: REDIS_FOR_RATE_LIMITING,
         key: "rate:airtable:base:#{base_id}",
-        limit: 5,
+        limit: PER_BASE_RATE_LIMIT,
         period: 1.0
       )
     end
@@ -94,7 +97,7 @@ class AirtableService
       # Apply global rate limiting first (50 req/sec)
       global_rate_limiter.acquire!
 
-      # Apply per-base rate limiting if base_id can be extracted (5 req/sec per base)
+      # Apply per-base rate limiting if base_id can be extracted (PER_BASE_RATE_LIMIT req/sec per base)
       base_id = extract_base_id(url)
       if base_id
         rate_limiter_for_base(base_id).acquire!
