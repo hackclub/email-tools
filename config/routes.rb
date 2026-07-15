@@ -8,6 +8,9 @@ Rails.application.routes.draw do
   # Public home page
   root "home#index"
 
+  # Public system-health dashboard (aggregate metrics only, no private data)
+  get "internal-dashboard", to: "status#show", as: :internal_dashboard
+
   # Public auth routes
   get "auth/otp/request", to: "auth#show_otp_request", as: :auth_otp_request
   post "auth/otp/request", to: "auth#request_otp"

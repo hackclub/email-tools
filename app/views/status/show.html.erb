@@ -1,0 +1,73 @@
+<% content_for :title, "System Status" %>
+<% content_for :head do %>
+  <meta http-equiv="refresh" content="30">
+<% end %>
+
+<div class="container">
+  <h1 class="text-center">System Status</h1>
+
+  <% verdict = @status["verdict"] %>
+  <% verdict_color = { "ok" => "#0a0", "degraded" => "#c80", "down" => "#c00" }.fetch(verdict, "#888") %>
+  <p class="text-center" style="margin-bottom: 8px;">
+    <span style="display: inline-block; padding: 4px 14px; border-radius: 12px; color: #fff; font-weight: bold; background: <%= verdict_color %>;">
+      <%= verdict.upcase %>
+    </span>
+  </p>
+  <p class="text-center text-muted" style="font-size: 12px; margin-bottom: 32px;">
+    as of <%= @status["generated_at"] %> &middot; refreshes every 30s &middot;
+    <%= link_to "JSON", internal_dashboard_path(format: :json) %>
+  </p>
+
+  <% if @status["polling"].present? %>
+    <h2 style="font-size: 18px;">Job queues</h2>
+    <p class="text-muted" style="font-size: 13px;">Latency is how long the oldest waiting job has been queued.</p>
+    <table style="width: 100%; margin-bottom: 24px; border-collapse: collapse;">
+      <tr style="text-align: left; border-bottom: 1px solid #ddd;">
+        <th style="padding: 4px;">Queue</th><th style="padding: 4px;">Waiting jobs</th><th style="padding: 4px;">Latency</th>
+      </tr>
+      <% Array(@status["queues"]).each do |q| %>
+        <tr style="border-bottom: 1px solid #eee;">
+          <td style="padding: 4px;"><%= q["name"] %></td>
+          <td style="padding: 4px;"><%= q["size"] %></td>
+          <td style="padding: 4px;"><%= q["latency_seconds"] %>s</td>
+        </tr>
+      <% end %>
+      <% if Array(@status["queues"]).empty? %>
+        <tr><td colspan="3" style="padding: 4px;" class="text-muted">No queue data yet.</td></tr>
+      <% end %>
+    </table>
+
+    <h2 style="font-size: 18px;">Airtable polling</h2>
+    <table style="width: 100%; margin-bottom: 24px; border-collapse: collapse;">
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Synced sources</td><td style="padding: 4px;"><%= @status.dig("polling", "active_sources") %></td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Polled in the last 2 minutes</td><td style="padding: 4px;"><%= @status.dig("polling", "polled_within_2m") %></td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Stale (no successful poll in 10 min)</td><td style="padding: 4px;"><%= @status.dig("polling", "stale_sources") %></td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Repeatedly failing</td><td style="padding: 4px;"><%= @status.dig("polling", "failing_sources") %></td></tr>
+    </table>
+
+    <h2 style="font-size: 18px;">Loops delivery (last hour)</h2>
+    <p class="text-muted" style="font-size: 13px;">Delivery time is detected change &rarr; delivered to Loops.</p>
+    <table style="width: 100%; margin-bottom: 24px; border-collapse: collapse;">
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Changes detected</td><td style="padding: 4px;"><%= @status.dig("dispatch", "envelopes_created_last_hour") %></td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Delivered</td><td style="padding: 4px;"><%= @status.dig("dispatch", "delivered_last_hour") %></td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Failed</td><td style="padding: 4px;"><%= @status.dig("dispatch", "failed_last_hour") %></td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Median delivery time</td><td style="padding: 4px;"><%= @status.dig("dispatch", "median_delivery_seconds") || "&ndash;".html_safe %>s</td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">p95 delivery time</td><td style="padding: 4px;"><%= @status.dig("dispatch", "p95_delivery_seconds") || "&ndash;".html_safe %>s</td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Waiting to deliver</td><td style="padding: 4px;"><%= @status.dig("dispatch", "envelopes_waiting") %> (oldest <%= @status.dig("dispatch", "oldest_waiting_seconds") %>s)</td></tr>
+    </table>
+
+    <h2 style="font-size: 18px;">Workers</h2>
+    <table style="width: 100%; margin-bottom: 24px; border-collapse: collapse;">
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Worker processes</td><td style="padding: 4px;"><%= @status.dig("workers", "processes") %></td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Busy threads</td><td style="padding: 4px;"><%= @status.dig("workers", "busy_threads") %></td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Jobs in retry</td><td style="padding: 4px;"><%= @status["retry_size"] %></td></tr>
+      <tr style="border-bottom: 1px solid #eee;"><td style="padding: 4px;">Dead jobs</td><td style="padding: 4px;"><%= @status["dead_size"] %></td></tr>
+    </table>
+  <% else %>
+    <p class="text-center text-muted">Status is temporarily unavailable.</p>
+  <% end %>
+
+  <p class="text-center text-muted" style="font-size: 12px;">
+    All numbers are aggregates; this page never shows emails or record data.
+  </p>
+</div>

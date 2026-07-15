@@ -15,4 +15,8 @@
 <% if current_authenticated_email %>
   <%= render "shared/authenticated_footer" %>
 <% end %>
+
+<p class="text-center text-muted" style="margin-top: 48px; font-size: 12px;">
+  <%= link_to "system status", internal_dashboard_path, style: "color: inherit;" %>
+</p>
 </div>
