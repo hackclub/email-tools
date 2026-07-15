@@ -77,13 +77,15 @@ class AirtableService
     end
 
     # Get or create a per-base rate limiter
-    # Limit: 1 request per second per base
+    # Limit: 5 requests per second per base (Airtable's documented per-base
+    # limit). Throttling below that serializes multi-table polls: each extra
+    # request per base used to add a full second to every poll.
     def rate_limiter_for_base(base_id)
       @base_limiters ||= {}
       @base_limiters[base_id] ||= RateLimiter.new(
         redis: REDIS_FOR_RATE_LIMITING,
         key: "rate:airtable:base:#{base_id}",
-        limit: 1,
+        limit: 5,
         period: 1.0
       )
     end
@@ -92,7 +94,7 @@ class AirtableService
       # Apply global rate limiting first (50 req/sec)
       global_rate_limiter.acquire!
 
-      # Apply per-base rate limiting if base_id can be extracted (1 req/sec per base)
+      # Apply per-base rate limiting if base_id can be extracted (5 req/sec per base)
       base_id = extract_base_id(url)
       if base_id
         rate_limiter_for_base(base_id).acquire!
@@ -163,7 +165,23 @@ class AirtableService
       nil
     end
 
-    def self.get_schema(base_id:, include_visible_field_ids: false)
+    # Base schemas change rarely but were fetched once per poll of every
+    # source, which alone consumed most of the global request budget
+    # (one schema call per source per 30s poll interval). Caching them for
+    # a few minutes keeps the fleet's request rate far below the per-token
+    # limit; the cost is that a brand-new Loops column is picked up at most
+    # SCHEMA_CACHE_TTL_SECONDS late.
+    SCHEMA_CACHE_TTL_SECONDS = Integer(ENV.fetch("AIRTABLE_SCHEMA_CACHE_TTL_SECONDS", "300"))
+    SCHEMA_CACHE_KEY_PREFIX = "cache:airtable:schema:"
+
+    def self.get_schema(base_id:, include_visible_field_ids: false, fresh: false)
+      cache_key = schema_cache_key(base_id, include_visible_field_ids)
+
+      if !fresh && SCHEMA_CACHE_TTL_SECONDS > 0
+        cached = REDIS_FOR_RATE_LIMITING.get(cache_key)
+        return JSON.parse(cached) if cached
+      end
+
       url = "#{META_API_URL}/bases/#{base_id}/tables"
       url += "?include[]=visibleFieldIds" if include_visible_field_ids
 
@@ -175,7 +193,24 @@ class AirtableService
         tables_by_id[table["id"]] = table
       end
 
+      if SCHEMA_CACHE_TTL_SECONDS > 0
+        REDIS_FOR_RATE_LIMITING.setex(cache_key, SCHEMA_CACHE_TTL_SECONDS, JSON.generate(tables_by_id))
+      end
+
       tables_by_id
+    end
+
+    # Drop the cached schema for a base, e.g. right after this app itself
+    # mutates the schema so the next poll sees the change immediately.
+    def self.invalidate_schema_cache(base_id:)
+      REDIS_FOR_RATE_LIMITING.del(
+        schema_cache_key(base_id, false),
+        schema_cache_key(base_id, true)
+      )
+    end
+
+    def self.schema_cache_key(base_id, include_visible_field_ids)
+      "#{SCHEMA_CACHE_KEY_PREFIX}#{base_id}#{include_visible_field_ids ? ':visible' : ''}"
     end
 
     def self.update_table_schema(base_id:, table_id:, fields:)
@@ -186,13 +221,17 @@ class AirtableService
       url = "#{META_API_URL}/bases/#{base_id}/tables/#{table_id}"
       # Ensure body is properly formatted with string keys
       body = { "fields" => fields }
-      AirtableService.patch(url, body)
+      result = AirtableService.patch(url, body)
+      invalidate_schema_cache(base_id: base_id)
+      result
     end
 
     def self.add_field(base_id:, table_id:, field:)
       # Alternative: POST to /fields endpoint to add a single field
       url = "#{META_API_URL}/bases/#{base_id}/tables/#{table_id}/fields"
-      AirtableService.post(url, field)
+      result = AirtableService.post(url, field)
+      invalidate_schema_cache(base_id: base_id)
+      result
     end
 
     private

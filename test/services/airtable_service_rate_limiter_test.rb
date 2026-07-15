@@ -99,7 +99,7 @@ class AirtableServiceRateLimiterTest < ActiveSupport::TestCase
     assert elapsed >= 0.1, "Should take some time even for allowed requests"
   end
 
-  test "per-base rate limiter enforces 1 req/sec limit" do
+  test "per-base rate limiter no longer serializes consecutive requests" do
     skip "Skipping actual API call test" unless ENV["AIRTABLE_PERSONAL_ACCESS_TOKEN"]
 
     # We need a real base_id for this test
@@ -116,79 +116,42 @@ class AirtableServiceRateLimiterTest < ActiveSupport::TestCase
       REDIS_FOR_RATE_LIMITING.del(redis_key)
       REDIS_FOR_RATE_LIMITING.del("#{redis_key}:seq")
 
-      start_time = Time.now
-
-      # First request should be immediate (no rate limiting)
-      AirtableService::Bases.get_schema(base_id: base_id)
-      time_after_1 = Time.now - start_time
-
-      # Second request should wait ~1 second due to rate limiting
+      # With the per-base limit at Airtable's documented 5 req/sec, a couple
+      # of back-to-back requests must not be delayed by our limiter (the old
+      # 1 req/sec limit added a full second to each). fresh: true bypasses
+      # the schema cache so each call really hits the API.
+      second_start = nil
+      AirtableService::Bases.get_schema(base_id: base_id, fresh: true)
       second_start = Time.now
-      AirtableService::Bases.get_schema(base_id: base_id)
-      time_after_2 = Time.now - start_time
+      AirtableService::Bases.get_schema(base_id: base_id, fresh: true)
       second_duration = Time.now - second_start
 
-      # Third request should wait another ~1 second
-      third_start = Time.now
-      AirtableService::Bases.get_schema(base_id: base_id)
-      total_time = Time.now - start_time
-      third_duration = Time.now - third_start
-
-      # First request includes API call time, should be reasonable (< 1s for API + overhead)
-      assert time_after_1 < 1.0, "First request should complete in reasonable time, took #{time_after_1}s"
-
-      # Second request should wait ~1 second due to rate limiting before making API call
-      # The rate limiter enforces a sliding window, so it waits until 1 second after the first request
-      # Allow some flexibility (0.8s minimum to account for timing precision)
-      assert second_duration >= 0.8, "Second request should wait ~1s for rate limit + API time, took #{second_duration}s"
-      assert second_duration < 2.5, "Second request shouldn't take too long, took #{second_duration}s"
-
-      # Verify that rate limiting is actually working - second should take significantly longer than first
-      assert second_duration > time_after_1 * 1.5, "Second request should take longer due to rate limiting (first: #{time_after_1}s, second: #{second_duration}s)"
-
-      # Third request should wait another ~1 second
-      assert third_duration >= 0.8, "Third request should wait another ~1s, took #{third_duration}s"
-      assert third_duration < 2.5, "Third request shouldn't take too long, took #{third_duration}s"
-
-      # Total time should reflect the rate limiting delays
-      assert total_time >= 1.5, "Total time should reflect rate limiting delays, took #{total_time}s"
-      assert total_time < 6.0, "Total time should be reasonable, took #{total_time}s"
+      assert second_duration < 0.8,
+        "Second request should not wait on the per-base limiter (took #{second_duration}s)"
     rescue => e
       skip "Could not test per-base limiting: #{e.message}"
     end
   end
 
-  test "rate limiting prevents exceeding per-base limit" do
-    skip "Skipping actual API call test" unless ENV["AIRTABLE_PERSONAL_ACCESS_TOKEN"]
+  test "per-base rate limiter enforces 5 req/sec window" do
+    # Deterministic check against the limiter itself (no API): five slots are
+    # immediate, the sixth must wait for the 1s window to free up.
+    key = "rate:test:per-base-window:#{SecureRandom.hex(4)}"
+    limiter = RateLimiter.new(redis: REDIS_FOR_RATE_LIMITING, key: key, limit: 5, period: 1.0)
 
-    begin
-      bases = []
-      AirtableService::Bases.find_each { |base| bases << base; break if bases.length >= 1 }
-      skip "No bases available for testing" if bases.empty?
+    start = Time.now
+    5.times { limiter.acquire! }
+    first_five_duration = Time.now - start
 
-      base_id = bases.first["id"]
+    sixth_start = Time.now
+    limiter.acquire!
+    sixth_duration = Time.now - sixth_start
 
-      # Clear rate limit state for this base
-      redis_key = "rate:airtable:base:#{base_id}"
-      REDIS_FOR_RATE_LIMITING.del(redis_key)
-      REDIS_FOR_RATE_LIMITING.del("#{redis_key}:seq")
-
-      # Make first request
-      start_time = Time.now
-      AirtableService::Bases.get_schema(base_id: base_id)
-      first_duration = Time.now - start_time
-
-      # Immediately try second request - should be rate limited
-      second_start = Time.now
-      AirtableService::Bases.get_schema(base_id: base_id)
-      second_duration = Time.now - second_start
-
-      # Second request should take significantly longer due to rate limiting
-      assert second_duration > first_duration * 1.5,
-        "Second request should be rate limited (first: #{first_duration}s, second: #{second_duration}s)"
-      assert second_duration >= 0.8, "Second request should wait at least ~1s, took #{second_duration}s"
-    rescue => e
-      skip "Could not test rate limiting prevention: #{e.message}"
-    end
+    assert first_five_duration < 0.5, "First five acquires should be immediate, took #{first_five_duration}s"
+    assert sixth_duration >= 0.4, "Sixth acquire should wait for the sliding window, took #{sixth_duration}s"
+    assert sixth_duration < 2.0, "Sixth acquire should not wait more than one window, took #{sixth_duration}s"
+  ensure
+    REDIS_FOR_RATE_LIMITING.del(key)
+    REDIS_FOR_RATE_LIMITING.del("#{key}:seq")
   end
 end
