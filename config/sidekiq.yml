@@ -1,9 +1,13 @@
 ---
 concurrency: 5
+# Weighted queues: sidekiq samples queues proportionally to their weight
+# instead of always draining them in listed order. A plain (strict) list
+# starved `default` for a full day when `polling` demand exceeded worker
+# capacity — polling never emptied, so Loops dispatch never ran.
 queues:
-  - scheduler
-  - polling
-  - default
+  - ["scheduler", 6]
+  - ["polling", 3]
+  - ["default", 2]
 
 :schedule:
   sync_source_enqueuer:

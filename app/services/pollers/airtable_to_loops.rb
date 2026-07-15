@@ -5,6 +5,11 @@ module Pollers
 
     DISPLAY_NAME_UPDATE_INTERVAL = 24.hours
 
+    # Records per baseline-detection batch. Bounds the size of the IN-list
+    # SELECT and the bulk write statements when a full-table resync fetches
+    # tens of thousands of records.
+    BASELINE_BATCH_SIZE = 500
+
     def call(sync_source)
       base_id = sync_source.source_id
       poll_start_time = Time.current.utc
@@ -256,48 +261,65 @@ module Pollers
     def detect_changes(sync_source, base_id, table_id, records, table, email_field, loops_fields)
       changed_records = []
 
-      records.each do |record|
-        record_id = record["id"]
-        row_id = row_identifier(table_id, record_id)
-        record_fields = record["fields"] || {}
-        changed_values = {}
+      # Baselines are detected and persisted in bulk, one batch of records at
+      # a time, instead of a SELECT + UPDATE per record+field. Every poll
+      # checks every Loops field of every fetched record, so per-check
+      # statements dominated poll time on large tables.
+      records.each_slice(BASELINE_BATCH_SIZE) do |record_slice|
+        checks = []
 
-        # Only iterate through Loops fields - we only create baselines for Loops fields
-        loops_fields.each do |field_id, field|
-          field_name = field["name"]
-          field_id_key = field_identifier(field_id, field_name)
+        record_slice.each do |record|
+          row_id = row_identifier(table_id, record["id"])
+          record_fields = record["fields"] || {}
 
-          # Get current value from record_fields (nil if not present, meaning field is null/empty)
-          current_value_raw = record_fields[field_name]
-          current_value = ValueNormalizer.from_airtable(current_value_raw)
+          # Only check Loops fields - we only create baselines for Loops fields
+          loops_fields.each do |field_id, field|
+            field_name = field["name"]
 
-          result = FieldValueBaseline.detect_change(
-            sync_source: sync_source,
-            row_id: row_id,
-            field_id: field_id_key,
-            current_value: current_value
-          )
+            # Get current value from record_fields (nil if not present, meaning field is null/empty)
+            current_value_raw = record_fields[field_name]
 
-          if result[:changed]
-            # Include old_value and modified_at for the job
-            # old_value comes from the result (nil if first_time)
-            # Use string keys for Sidekiq JSON serialization compatibility
-            changed_values[field_id_key] = {
-              "value" => current_value,
-              "old_value" => result[:old_value],
-              "modified_at" => Time.current.iso8601
+            checks << {
+              row_id: row_id,
+              field_id: field_identifier(field_id, field_name),
+              current_value: ValueNormalizer.from_airtable(current_value_raw)
             }
           end
         end
 
-        # If ANY field changed, send to the job
-        unless changed_values.empty?
-          email = record_fields[email_field["name"]]
-          changed_records << {
-            id: record_id,
-            email: email,
-            changedValues: changed_values
-          }
+        results = FieldValueBaseline.detect_changes_batch(sync_source: sync_source, checks: checks)
+
+        record_slice.each do |record|
+          record_id = record["id"]
+          row_id = row_identifier(table_id, record_id)
+          record_fields = record["fields"] || {}
+          changed_values = {}
+
+          loops_fields.each do |field_id, field|
+            field_name = field["name"]
+            field_id_key = field_identifier(field_id, field_name)
+            result = results[[ row_id, field_id_key ]]
+            next unless result && result[:changed]
+
+            # Include old_value and modified_at for the job
+            # old_value comes from the result (nil if first_time)
+            # Use string keys for Sidekiq JSON serialization compatibility
+            changed_values[field_id_key] = {
+              "value" => ValueNormalizer.from_airtable(record_fields[field_name]),
+              "old_value" => result[:old_value],
+              "modified_at" => Time.current.iso8601
+            }
+          end
+
+          # If ANY field changed, send to the job
+          unless changed_values.empty?
+            email = record_fields[email_field["name"]]
+            changed_records << {
+              id: record_id,
+              email: email,
+              changedValues: changed_values
+            }
+          end
         end
       end
 

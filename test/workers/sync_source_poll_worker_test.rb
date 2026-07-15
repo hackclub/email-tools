@@ -150,6 +150,10 @@ class SyncSourcePollWorkerTest < ActiveSupport::TestCase
       # Small delay to ensure lock is released
       sleep(0.05)
 
+      # Age the attempt past the backlog-duplicate guard so the second job
+      # counts as due rather than as a queued duplicate
+      @sync_source.update_columns(last_poll_attempted_at: 16.seconds.ago)
+
       # Run second job - should succeed now
       SyncSourcePollWorker.new.perform(@sync_source.id)
     ensure
@@ -192,6 +196,10 @@ class SyncSourcePollWorkerTest < ActiveSupport::TestCase
       # Small delay to ensure lock is released
       sleep(0.05)
 
+      # Age the attempt past the backlog-duplicate guard so the second job
+      # counts as due rather than as a queued duplicate
+      @sync_source.update_columns(last_poll_attempted_at: 16.seconds.ago)
+
       # Run second job - should succeed because lock was released
       SyncSourcePollWorker.new.perform(@sync_source.id)
     ensure
@@ -200,6 +208,61 @@ class SyncSourcePollWorkerTest < ActiveSupport::TestCase
 
     # Verify both attempted (even though first failed)
     assert_equal 2, execution_tracker[:count], "Second job should run after first releases lock on error"
+  end
+
+  test "skips backlog duplicate when last attempt is fresher than half the poll interval" do
+    @sync_source.update_columns(last_poll_attempted_at: 2.seconds.ago)
+    previous_attempt = @sync_source.reload.last_poll_attempted_at
+
+    call_tracker = { count: 0 }
+    mock_poller = Class.new do
+      def initialize(call_counter)
+        @call_counter = call_counter
+      end
+
+      def call(sync_source)
+        @call_counter[:count] += 1
+      end
+    end.new(call_tracker)
+
+    original_for = Poller.method(:for)
+    Poller.define_singleton_method(:for) { |_sync_source| mock_poller }
+
+    begin
+      SyncSourcePollWorker.new.perform(@sync_source.id)
+    ensure
+      Poller.define_singleton_method(:for, original_for)
+    end
+
+    assert_equal 0, call_tracker[:count], "Poller should not run for a backlog duplicate"
+    assert_equal previous_attempt, @sync_source.reload.last_poll_attempted_at,
+      "Skipped duplicate should not mark a new attempt"
+  end
+
+  test "polls when last attempt is older than half the poll interval" do
+    @sync_source.update_columns(last_poll_attempted_at: 16.seconds.ago)
+
+    call_tracker = { count: 0 }
+    mock_poller = Class.new do
+      def initialize(call_counter)
+        @call_counter = call_counter
+      end
+
+      def call(sync_source)
+        @call_counter[:count] += 1
+      end
+    end.new(call_tracker)
+
+    original_for = Poller.method(:for)
+    Poller.define_singleton_method(:for) { |_sync_source| mock_poller }
+
+    begin
+      SyncSourcePollWorker.new.perform(@sync_source.id)
+    ensure
+      Poller.define_singleton_method(:for, original_for)
+    end
+
+    assert_equal 1, call_tracker[:count], "Poller should run when the source is due"
   end
 
   test "different sync_source IDs do not interfere" do

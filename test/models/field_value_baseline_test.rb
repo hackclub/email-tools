@@ -553,4 +553,110 @@ class FieldValueBaselineTest < ActiveSupport::TestCase
     )
     assert_equal array1, result4[:old_value], "old_value should work with array values"
   end
+
+  test "detect_changes_batch handles new, changed, and unchanged checks in one call" do
+    FieldValueBaseline.detect_change(
+      sync_source: @sync_source, row_id: "tbl1_rec1", field_id: "fldA", current_value: "same"
+    )
+    FieldValueBaseline.detect_change(
+      sync_source: @sync_source, row_id: "tbl1_rec2", field_id: "fldA", current_value: "before"
+    )
+
+    results = FieldValueBaseline.detect_changes_batch(
+      sync_source: @sync_source,
+      checks: [
+        { row_id: "tbl1_rec1", field_id: "fldA", current_value: "same" },
+        { row_id: "tbl1_rec2", field_id: "fldA", current_value: "after" },
+        { row_id: "tbl1_rec3", field_id: "fldA", current_value: "brand new" }
+      ]
+    )
+
+    unchanged = results[[ "tbl1_rec1", "fldA" ]]
+    refute unchanged[:changed], "Unchanged value should not be flagged"
+    refute unchanged[:first_time]
+    assert_equal "same", unchanged[:old_value]
+
+    changed = results[[ "tbl1_rec2", "fldA" ]]
+    assert changed[:changed], "Changed value should be flagged"
+    refute changed[:first_time]
+    assert_equal "before", changed[:old_value]
+
+    first_time = results[[ "tbl1_rec3", "fldA" ]]
+    assert first_time[:changed], "First time should be considered a change"
+    assert first_time[:first_time]
+    assert_nil first_time[:old_value]
+
+    assert_equal "after",
+      FieldValueBaseline.find_by(sync_source_id: @sync_source.id, row_id: "tbl1_rec2", field_id: "fldA").last_known_value
+    new_baseline = FieldValueBaseline.find_by(sync_source_id: @sync_source.id, row_id: "tbl1_rec3", field_id: "fldA")
+    assert_equal "brand new", new_baseline.last_known_value
+    assert_equal 1, new_baseline.checked_count
+  end
+
+  test "detect_changes_batch bumps bookkeeping without touching value timestamps on unchanged rows" do
+    first = FieldValueBaseline.detect_change(
+      sync_source: @sync_source, row_id: @row_id, field_id: @field_id, current_value: "stable"
+    )[:baseline]
+    original_value_updated_at = first.value_last_updated_at
+    original_checked_at = first.last_checked_at
+    original_count = first.checked_count
+
+    FieldValueBaseline.detect_changes_batch(
+      sync_source: @sync_source,
+      checks: [ { row_id: @row_id, field_id: @field_id, current_value: "stable" } ],
+      checked_at: original_checked_at + 10.seconds
+    )
+
+    reloaded = first.reload
+    assert_equal original_count + 1, reloaded.checked_count, "checked_count should increment"
+    assert reloaded.last_checked_at > original_checked_at, "last_checked_at should advance"
+    assert_equal original_value_updated_at, reloaded.value_last_updated_at,
+      "value_last_updated_at should not move when the value is unchanged"
+    assert_equal "stable", reloaded.last_known_value
+  end
+
+  test "detect_changes_batch collapses duplicate row and field pairs with last value winning" do
+    results = FieldValueBaseline.detect_changes_batch(
+      sync_source: @sync_source,
+      checks: [
+        { row_id: @row_id, field_id: @field_id, current_value: "first" },
+        { row_id: @row_id, field_id: @field_id, current_value: "second" }
+      ]
+    )
+
+    assert_equal 1, results.size
+    assert results[[ @row_id, @field_id ]][:first_time]
+    assert_equal "second",
+      FieldValueBaseline.find_by(sync_source_id: @sync_source.id, row_id: @row_id, field_id: @field_id).last_known_value
+  end
+
+  test "detect_changes_batch returns empty hash for empty checks" do
+    assert_equal({}, FieldValueBaseline.detect_changes_batch(sync_source: @sync_source, checks: []))
+  end
+
+  test "detect_changes_batch uses a bounded number of queries" do
+    10.times do |i|
+      FieldValueBaseline.detect_change(
+        sync_source: @sync_source, row_id: "tblq_rec#{i}", field_id: "fldQ", current_value: "v#{i}"
+      )
+    end
+
+    checks = []
+    10.times { |i| checks << { row_id: "tblq_rec#{i}", field_id: "fldQ", current_value: (i.even? ? "v#{i}" : "changed") } }
+    10.times { |i| checks << { row_id: "tblq_new#{i}", field_id: "fldQ", current_value: "new" } }
+
+    query_count = 0
+    counter = lambda do |_name, _start, _finish, _id, payload|
+      next if %w[SCHEMA TRANSACTION].include?(payload[:name])
+      next if payload[:sql] =~ /\A(BEGIN|COMMIT|SAVEPOINT|RELEASE)/i
+      query_count += 1
+    end
+
+    ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
+      FieldValueBaseline.detect_changes_batch(sync_source: @sync_source, checks: checks)
+    end
+
+    assert_operator query_count, :<=, 4,
+      "Batch detection should use a constant number of statements (SELECT + bulk UPDATE + upsert), got #{query_count}"
+  end
 end
