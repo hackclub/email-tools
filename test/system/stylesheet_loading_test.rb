@@ -8,7 +8,9 @@ class StylesheetLoadingTest < ApplicationSystemTestCase
     html = page.html
 
     # Verify stylesheet link tag exists and references application
-    assert_match %r{<link[^>]*href=["'][^"']*application[^"']*["'][^>]*rel=["']stylesheet["']}, html,
+    # (attribute order varies between Rails versions, so match rel and href
+    # independently within the same tag)
+    assert_match %r{<link(?=[^>]*rel=["']stylesheet["'])(?=[^>]*href=["'][^"']*application[^"']*["'])[^>]*>}, html,
       "HTML should include a stylesheet link tag referencing application.css"
 
     # Verify it's not referencing :app (the incorrect reference)
