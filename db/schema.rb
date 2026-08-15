@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_15_030000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_15_050001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -79,8 +79,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_15_030000) do
     t.string "sync_source_table_id"
     t.datetime "updated_at", null: false
     t.index ["email_normalized", "occurred_at"], name: "idx_on_email_normalized_occurred_at_4255605731"
-    t.index ["email_normalized"], name: "idx_loops_contact_change_audits_email_trgm", opclass: :gin_trgm_ops, using: :gin
-    t.index ["email_normalized"], name: "index_loops_contact_change_audits_on_email_normalized"
+  end
+
+  create_table "loops_email_activities", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "email_normalized", null: false
+    t.datetime "last_occurred_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["email_normalized"], name: "idx_loops_email_activities_email_trgm", opclass: :gin_trgm_ops, using: :gin
+    t.index ["email_normalized"], name: "index_loops_email_activities_on_email_normalized", unique: true
+    t.index ["last_occurred_at", "email_normalized"], name: "idx_loops_email_activities_recency", order: { last_occurred_at: :desc }
   end
 
   create_table "loops_field_baselines", force: :cascade do |t|

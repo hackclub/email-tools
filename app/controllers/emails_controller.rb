@@ -6,22 +6,23 @@ class EmailsController < ApplicationController
     @page = params[:page].to_i
     @page = 1 if @page < 1
 
-    scope = LoopsContactChangeAudit.all
+    # Reads the per-email summary maintained on every audit insert instead of
+    # aggregating the whole (multi-million row) audit table per request.
+    scope = LoopsEmailActivity.all
     if @query.present?
       scope = scope.where(
         "email_normalized ILIKE ?",
-        "%#{LoopsContactChangeAudit.sanitize_sql_like(@query)}%"
+        "%#{LoopsEmailActivity.sanitize_sql_like(@query)}%"
       )
     end
 
-    @total_count = scope.distinct.count(:email_normalized)
+    @total_count = scope.count
     @total_pages = [ (@total_count.to_f / EMAILS_PER_PAGE).ceil, 1 ].max
     @page = @total_pages if @page > @total_pages
 
-    # Get distinct emails ordered by most recent occurred_at
+    # Emails ordered by most recent audit activity
     @emails = scope
-      .group(:email_normalized)
-      .order(Arel.sql("MAX(occurred_at) DESC"))
+      .order(last_occurred_at: :desc, email_normalized: :asc)
       .limit(EMAILS_PER_PAGE)
       .offset((@page - 1) * EMAILS_PER_PAGE)
       .pluck(:email_normalized)
