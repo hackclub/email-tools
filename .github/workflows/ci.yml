@@ -113,7 +113,10 @@ jobs:
           SQL
 
       - name: Run tests
-        run: bin/rails test test:system
+        run: bin/rails test
+
+      - name: Run system tests
+        run: bin/rails test:system
 
       - name: Keep screenshots from failed system tests
         uses: actions/upload-artifact@v7
