@@ -1,10 +1,29 @@
 class EmailsController < ApplicationController
+  EMAILS_PER_PAGE = 1000
+
   def index
+    @query = params[:q].to_s.strip
+    @page = params[:page].to_i
+    @page = 1 if @page < 1
+
+    scope = LoopsContactChangeAudit.all
+    if @query.present?
+      scope = scope.where(
+        "email_normalized ILIKE ?",
+        "%#{LoopsContactChangeAudit.sanitize_sql_like(@query)}%"
+      )
+    end
+
+    @total_count = scope.distinct.count(:email_normalized)
+    @total_pages = [ (@total_count.to_f / EMAILS_PER_PAGE).ceil, 1 ].max
+    @page = @total_pages if @page > @total_pages
+
     # Get distinct emails ordered by most recent occurred_at
-    @emails = LoopsContactChangeAudit
-      .select(:email_normalized, "MAX(occurred_at) as last_occurred_at")
+    @emails = scope
       .group(:email_normalized)
-      .order("MAX(occurred_at) DESC")
+      .order(Arel.sql("MAX(occurred_at) DESC"))
+      .limit(EMAILS_PER_PAGE)
+      .offset((@page - 1) * EMAILS_PER_PAGE)
       .pluck(:email_normalized)
   end
 
