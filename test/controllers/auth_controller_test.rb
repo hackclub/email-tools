@@ -70,16 +70,28 @@ class AuthControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "request_otp handles rate limit" do
-    # Generate 3 OTPs to hit rate limit
-    3.times do
-      AuthenticationService.generate_otp(@email)
-    end
+    # Use a unique email: other test classes (alts, profile_update) share
+    # Redis across parallel workers and clear rate:otp:test@example.com in
+    # their setup/teardown, which would reset this test's rate-limit count
+    # mid-test and make it flaky.
+    email = "rate-limit-#{SecureRandom.hex(4)}@example.com"
+    email_normalized = EmailNormalizer.normalize(email)
 
-    LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
-      post auth_otp_request_path, params: { email: @email }
+    begin
+      # Generate 3 OTPs to hit rate limit
+      3.times do
+        AuthenticationService.generate_otp(email)
+      end
 
-      assert_redirected_to auth_otp_request_path
-      assert_match(/Too many OTP requests/i, flash[:error])
+      LoopsService.stub(:send_transactional_email, ->(*args) { { "success" => true } }) do
+        post auth_otp_request_path, params: { email: email }
+
+        assert_redirected_to auth_otp_request_path
+        assert_match(/Too many OTP requests/i, flash[:error])
+      end
+    ensure
+      REDIS_FOR_RATE_LIMITING.del("rate:otp:#{email_normalized}")
+      OtpVerification.where(email_normalized: email_normalized).delete_all
     end
   end
 

@@ -27,7 +27,16 @@ class PrepareLoopsFieldsSpecialFieldsTest < ActiveJob::TestCase
     SyncSource.destroy_all
   end
 
+  # Some tests in this file intentionally make real (non-cached) LLM calls.
+  # Skip them unless a real OpenAI API key is configured (e.g. in CI or dev
+  # environments running with placeholder keys).
+  def require_real_llm!
+    skip "Requires a real OPENAI_API_KEY (makes live LLM calls)" unless ENV["OPENAI_API_KEY"].to_s.start_with?("sk-")
+  end
+
   test "processes setFullName field with real LLM call (non-cached)" do
+    require_real_llm!
+
     # This test will fail initially if LLM is not configured
     changed_fields = {
       "fldSpecial123/Loops - Special - setFullName" => {
@@ -121,6 +130,8 @@ class PrepareLoopsFieldsSpecialFieldsTest < ActiveJob::TestCase
   end
 
   test "processes setFullAddress field with real LLM call (non-cached)" do
+    require_real_llm!
+
     changed_fields = {
       "fldSpecial456/Loops - Special - setFullAddress" => {
         "value" => "123 Main St, Springfield, IL 62704, USA",
@@ -215,6 +226,8 @@ class PrepareLoopsFieldsSpecialFieldsTest < ActiveJob::TestCase
   end
 
   test "cache invalidates when prompt changes" do
+    require_real_llm!
+
     # Create cache entry for "John Doe"
     prompt1 = Ai::Prompts::ExtractFullName.call(raw_input: "John Doe")
     schema_props = Ai::Prompts::ExtractFullName::Schema.properties.to_json
@@ -319,6 +332,8 @@ class PrepareLoopsFieldsSpecialFieldsTest < ActiveJob::TestCase
   end
 
   test "handles multiple special fields in same request" do
+    require_real_llm!
+
     changed_fields = {
       "fldSpecial123/Loops - Special - setFullName" => {
         "value" => "John Doe",

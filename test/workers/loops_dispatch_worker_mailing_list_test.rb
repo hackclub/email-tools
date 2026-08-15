@@ -27,6 +27,19 @@ class LoopsDispatchWorkerMailingListTest < ActiveSupport::TestCase
     # Store original LoopsService methods for restoration
     @original_update_contact = LoopsService.method(:update_contact) if LoopsService.respond_to?(:update_contact)
     @original_find_contact = LoopsService.method(:find_contact) if LoopsService.respond_to?(:find_contact)
+    @original_list_mailing_lists = LoopsService.method(:list_mailing_lists) if LoopsService.respond_to?(:list_mailing_lists)
+
+    # Stub LoopsService network calls so tests never hit the real Loops API.
+    # Default: the contact exists with no properties, so no baselines are
+    # seeded and no new-contact initial fields (default list, userGroup,
+    # source) are injected. Tests that exercise the new-contact safety net
+    # override find_contact to return [].
+    LoopsService.define_singleton_method(:find_contact) do |email: nil, userId: nil|
+      [ { "id" => "test-contact-id", "email" => email } ]
+    end
+    LoopsService.define_singleton_method(:list_mailing_lists) do
+      []
+    end
   end
 
   def teardown
@@ -44,6 +57,9 @@ class LoopsDispatchWorkerMailingListTest < ActiveSupport::TestCase
     end
     if @original_find_contact
       LoopsService.define_singleton_method(:find_contact, @original_find_contact)
+    end
+    if @original_list_mailing_lists
+      LoopsService.define_singleton_method(:list_mailing_lists, @original_list_mailing_lists)
     end
   end
 
@@ -520,8 +536,11 @@ class LoopsDispatchWorkerMailingListTest < ActiveSupport::TestCase
     unique_email = "default-test-#{Time.now.to_i}@example.com"
     unique_email_normalized = EmailNormalizer.normalize(unique_email)
 
-    # Ensure contact doesn't exist (no baselines)
+    # Ensure contact doesn't exist (no baselines, and Loops reports no contact)
     LoopsFieldBaseline.where(email_normalized: unique_email_normalized).destroy_all
+    LoopsService.define_singleton_method(:find_contact) do |email: nil, userId: nil|
+      []
+    end
 
     LoopsService.define_singleton_method(:update_contact) do |email:, **kwargs|
       { "success" => true, "id" => "test-request-123" }

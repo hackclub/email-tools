@@ -25,6 +25,19 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
 
     # Clean up semaphore
     REDIS_FOR_RATE_LIMITING.del(LoopsDispatchWorker::SEMAPHORE_KEY) if defined?(LoopsDispatchWorker::SEMAPHORE_KEY)
+
+    # Stub LoopsService network calls so tests never hit the real Loops API.
+    # Default: the contact exists with no properties, so no baselines are
+    # seeded and no new-contact initial fields are injected. Individual tests
+    # override these stubs when they need different behavior.
+    @original_find_contact = LoopsService.method(:find_contact)
+    LoopsService.define_singleton_method(:find_contact) do |email: nil, userId: nil|
+      [ { "id" => "test-contact-id", "email" => email } ]
+    end
+    @original_list_mailing_lists = LoopsService.method(:list_mailing_lists)
+    LoopsService.define_singleton_method(:list_mailing_lists) do
+      []
+    end
   end
 
   def teardown
@@ -32,6 +45,11 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
     cleanup_advisory_locks
     # Clean up semaphore
     REDIS_FOR_RATE_LIMITING.del(LoopsDispatchWorker::SEMAPHORE_KEY) if defined?(LoopsDispatchWorker::SEMAPHORE_KEY)
+
+    # Restore stubbed LoopsService methods
+    LoopsService.define_singleton_method(:find_contact, @original_find_contact) if @original_find_contact
+    LoopsService.define_singleton_method(:list_mailing_lists, @original_list_mailing_lists) if @original_list_mailing_lists
+
     LoopsOutboxEnvelope.destroy_all
     LoopsFieldBaseline.destroy_all
     LoopsContactChangeAudit.destroy_all
@@ -685,11 +703,10 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
         sync_source_id: @sync_source.id
       )
 
-      # Run the dispatch worker - should raise exception but mark envelope as failed
+      # Run the dispatch worker - marks envelope as failed without raising
+      # (permanent 4xx errors are not re-raised, so Sidekiq doesn't retry them)
       worker = LoopsDispatchWorker.new
-      assert_raises(LoopsService::ApiError) do
-        worker.perform
-      end
+      worker.perform
 
       # Reload envelope and verify it was marked as failed
       envelope.reload
@@ -799,11 +816,10 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
         sync_source_id: @sync_source.id
       )
 
-      # Run the dispatch worker - should raise exception but mark envelope as failed
+      # Run the dispatch worker - marks envelope as failed without raising
+      # (permanent 4xx errors are not re-raised, so Sidekiq doesn't retry them)
       worker = LoopsDispatchWorker.new
-      assert_raises(LoopsService::ApiError) do
-        worker.perform
-      end
+      worker.perform
 
       # Reload envelope and verify it was marked as failed
       envelope.reload
@@ -852,11 +868,10 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
       initial_status = envelope.status
       assert_equal "queued", initial_status, "Envelope should start as queued"
 
-      # Run the dispatch worker - should raise exception but mark envelope as failed
+      # Run the dispatch worker - marks envelope as failed without raising
+      # (permanent 4xx errors are not re-raised, so Sidekiq doesn't retry them)
       worker = LoopsDispatchWorker.new
-      assert_raises(LoopsService::ApiError) do
-        worker.perform
-      end
+      worker.perform
 
       # Reload envelope and verify it was marked as failed
       envelope.reload
@@ -914,11 +929,10 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
         sync_source_id: @sync_source.id
       )
 
-      # Run the dispatch worker - should raise exception but mark all envelopes as failed
+      # Run the dispatch worker - marks all envelopes as failed without raising
+      # (permanent 4xx errors are not re-raised, so Sidekiq doesn't retry them)
       worker = LoopsDispatchWorker.new
-      assert_raises(LoopsService::ApiError) do
-        worker.perform
-      end
+      worker.perform
 
       # Reload envelopes and verify they were all marked as failed
       envelope1.reload
@@ -970,12 +984,11 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
       # that the update persists even if there are validation issues)
       original_updated_at = envelope.updated_at
 
-      # Run the dispatch worker
+      # Run the dispatch worker - marks envelope as failed without raising
+      # (permanent 4xx errors are not re-raised, so Sidekiq doesn't retry them)
       worker = LoopsDispatchWorker.new
       ensure_worker_can_run(worker)
-      assert_raises(LoopsService::ApiError) do
-        worker.perform
-      end
+      worker.perform
 
       # Reload envelope and verify it was marked as failed
       envelope.reload
@@ -997,9 +1010,11 @@ class LoopsDispatchWorkerTest < ActiveSupport::TestCase
   test "preflight check error handling: transaction ensures persistence even if job fails" do
     # This test verifies that the transaction ensures envelopes are marked as failed
     # even if the job fails and Sidekiq retries
+    # Use a 5xx error: transient errors are re-raised so Sidekiq retries
+    # (permanent 4xx errors are swallowed and not retried)
     original_method = LoopsFieldBaseline.method(:check_contact_existence_and_load_baselines)
     LoopsFieldBaseline.define_singleton_method(:check_contact_existence_and_load_baselines) do |email_normalized:|
-      raise LoopsService::ApiError.new(400, '{"message": "Invalid email address"}')
+      raise LoopsService::ApiError.new(500, '{"message": "Invalid email address"}')
     end
 
     begin
