@@ -40,11 +40,9 @@ if [ -f /app/Gemfile ]; then
   bundle check || bundle install
 fi
 
-# Optionally run database setup/migrations on boot (only when enabled)
-if [ "${RUN_MIGRATIONS_ON_BOOT}" = "1" ] || [ "${RUN_MIGRATIONS_ON_BOOT}" = "true" ]; then
-  echo "Running rails db:prepare..."
-  bundle exec rails db:prepare
-fi
+# db:prepare acquires an advisory lock, so concurrent containers safely serialize.
+echo "Running rails db:prepare..."
+bundle exec rails db:prepare
 
 # Then exec the container's main process (what's set as CMD in the Dockerfile).
 exec "$@"
