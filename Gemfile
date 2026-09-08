@@ -24,7 +24,7 @@ gem "jbuilder"
 gem "tzinfo-data", platforms: %i[ windows jruby ]
 
 # Use Redis for Rails.cache, Active Job, and Action Cable
-gem "redis", "~> 5.0"
+gem "redis", "~> 6.0"
 
 # Use Sidekiq for background jobs
 gem "sidekiq", "~> 8.1"
