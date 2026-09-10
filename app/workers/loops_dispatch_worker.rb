@@ -675,8 +675,8 @@ class LoopsDispatchWorker
       return
     end
 
-    # Step 3: Ensure catalog is populated before validation
-    ensure_catalog_populated
+    # Step 3: Ensure catalog knows about the list IDs we need to validate
+    ensure_catalog_has_lists(list_ids)
 
     # Step 4: Validate list IDs against catalog
     validation_result = validate_list_ids(list_ids)
@@ -740,13 +740,16 @@ class LoopsDispatchWorker
     end
   end
 
-  # Ensure LoopsList catalog is populated (sync if empty)
-  def ensure_catalog_populated
-    return if LoopsList.count > 0
+  # Ensure the LoopsList catalog knows about specific list IDs before validation.
+  # Previously this only synced when the catalog was completely empty, which meant
+  # newly-created lists could silently fail validation for thousands of contacts
+  # before the SyncLoopsListsWorker (default queue) got a thread.
+  def ensure_catalog_has_lists(list_ids)
+    return if list_ids.empty?
+    return if LoopsList.where(loops_list_id: list_ids).count == list_ids.size
 
-    Rails.logger.info("LoopsDispatchWorker: LoopsList catalog is empty, syncing lists before validation")
+    Rails.logger.info("LoopsDispatchWorker: Catalog missing list IDs #{list_ids - LoopsList.where(loops_list_id: list_ids).pluck(:loops_list_id)}, syncing")
 
-    # Use advisory lock to prevent concurrent syncs
     lock_id = 0x4C4C5353  # ASCII: "LLSS" (Loops List Sync)
 
     ActiveRecord::Base.connection_pool.with_connection do |connection|
@@ -755,17 +758,14 @@ class LoopsDispatchWorker
 
       if lock_acquired
         begin
-          # Double-check after acquiring lock (another process might have populated it)
-          SyncLoopsListsWorker.new.perform if LoopsList.count == 0
+          if LoopsList.where(loops_list_id: list_ids).count < list_ids.size
+            SyncLoopsListsWorker.new.perform
+          end
         ensure
           connection.execute("SELECT pg_advisory_unlock(#{lock_id})")
         end
       else
-        # Another process is syncing - wait briefly and check again
         sleep(0.5)
-        if LoopsList.count == 0
-          Rails.logger.warn("LoopsDispatchWorker: Catalog still empty after sync attempt, proceeding with validation")
-        end
       end
     end
   end
