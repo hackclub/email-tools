@@ -1,5 +1,5 @@
 class SyncSourcesController < ApplicationController
-  before_action :set_sync_source, only: [ :show, :edit, :update, :destroy ]
+  before_action :set_sync_source, only: [ :show, :edit, :update, :destroy, :repoll ]
 
   def index
     @source = params[:source].presence
@@ -161,6 +161,16 @@ class SyncSourcesController < ApplicationController
     else
       render :edit, status: :unprocessable_entity
     end
+  end
+
+  def repoll
+    if @sync_source.source == "airtable"
+      AirtableService::Bases.invalidate_schema_cache(base_id: @sync_source.source_id)
+    end
+
+    SyncSourcePollWorker.perform_async(@sync_source.id)
+
+    redirect_to admin_sync_source_path(@sync_source), notice: "Schema cache obliterated. Repoll enqueued."
   end
 
   def destroy

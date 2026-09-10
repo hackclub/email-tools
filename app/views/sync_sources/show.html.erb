@@ -99,6 +99,14 @@
     background-color: #c82333;
     color: #fff;
   }
+  .btn-warning {
+    background-color: #fd7e14;
+    color: #fff;
+  }
+  .btn-warning:hover {
+    background-color: #e8590c;
+    color: #fff;
+  }
   pre {
     background-color: #f5f5f5;
     border: 1px solid #ddd;
@@ -281,9 +289,14 @@
 
 <div class="actions">
   <%= link_to "Edit", edit_admin_sync_source_path(@sync_source), class: "btn btn-primary" %>
-  <%= button_to "Archive", admin_sync_source_path(@sync_source), 
-      method: :delete, 
-      data: { confirm: "Are you sure you want to archive (soft-delete) this sync source?" }, 
+  <%= button_to "Obliterate Schema Cache & Repoll", admin_sync_source_repoll_path(@sync_source),
+      method: :post,
+      class: "btn btn-warning",
+      style: "display: inline-block; margin-right: 10px;",
+      title: "Invalidates the cached Airtable schema and enqueues an immediate poll." %>
+  <%= button_to "Archive", admin_sync_source_path(@sync_source),
+      method: :delete,
+      data: { confirm: "Are you sure you want to archive (soft-delete) this sync source?" },
       class: "btn btn-danger",
       style: "display: inline-block; margin-right: 10px;",
       title: "Archives (soft-deletes) this sync source. It can be restored from the 'Ignored / Deleted Bases' section." %>

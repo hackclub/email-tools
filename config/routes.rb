@@ -46,6 +46,7 @@ Rails.application.routes.draw do
     post "sync_sources/ignore", to: "sync_sources#ignore", as: :admin_sync_sources_ignore
     delete "sync_sources/ignore", to: "sync_sources#unignore", as: :admin_sync_sources_unignore
     post "sync_sources/:id/restore", to: "sync_sources#restore", as: :admin_sync_source_restore
+    post "sync_sources/:id/repoll", to: "sync_sources#repoll", as: :admin_sync_source_repoll
     resources :sync_sources, path: "sync_sources", as: "admin_sync_sources"
   end
 end
