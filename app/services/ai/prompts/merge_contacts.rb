@@ -28,11 +28,24 @@ module Ai
         PROMPT
       end
 
-      # The schema defines the structure of the merged contact.
-      # It should include all possible fields from a Loops contact.
-      # `strict false` is important to allow any valid Loops field.
-      class Schema < RubyLLM::Schema
-        strict false
+      # The schema defines the structure of the merged contact. It must accept
+      # any Loops contact field (unknown ahead of time, including nested objects
+      # like mailingLists), so it is a bare open object.
+      #
+      # Deliberately NOT a RubyLLM::Schema subclass: that always emits
+      # `properties: {}` / `required: []`, and newer OpenAI models (gpt-5.6+)
+      # honor an empty property list literally and return `{}`. A plain
+      # `{ type: object, additionalProperties: true }` gets the full merge.
+      class Schema
+        def self.properties = {}
+
+        def to_json_schema
+          {
+            name: "MergedContact",
+            schema: { type: "object", additionalProperties: true },
+            strict: false
+          }
+        end
       end
     end
   end

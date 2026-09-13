@@ -199,4 +199,48 @@ class Ai::ClientTest < ActiveSupport::TestCase
     assert_equal schema_class.name, cache_entry.request_json["schema_class"]
     assert_equal temp, cache_entry.request_json["temp"]
   end
+
+  test "default_model falls back to gpt-5.6-luna and honors LLM_MODEL" do
+    ENV.delete("LLM_MODEL")
+    assert_equal "gpt-5.6-luna", Ai::Client.default_model
+    ENV["LLM_MODEL"] = "gpt-5-mini"
+    assert_equal "gpt-5-mini", Ai::Client.default_model
+  ensure
+    ENV.delete("LLM_MODEL")
+  end
+
+  test "default_reasoning_effort maps legacy gpt-5 models to minimal and newer models to low" do
+    ENV.delete("LLM_REASONING_EFFORT")
+    assert_equal "minimal", Ai::Client.default_reasoning_effort("gpt-5")
+    assert_equal "minimal", Ai::Client.default_reasoning_effort("gpt-5-mini")
+    assert_equal "minimal", Ai::Client.default_reasoning_effort("gpt-5.1")
+    assert_equal "low", Ai::Client.default_reasoning_effort("gpt-5.6-luna")
+    assert_equal "low", Ai::Client.default_reasoning_effort("gpt-5.4-nano")
+    assert_equal "low", Ai::Client.default_reasoning_effort("gpt-6-astra")
+    ENV["LLM_REASONING_EFFORT"] = "medium"
+    assert_equal "medium", Ai::Client.default_reasoning_effort("gpt-5.6-luna")
+  ensure
+    ENV.delete("LLM_REASONING_EFFORT")
+  end
+
+  test "structured_generate builds an OpenAI chat with model, schema, temperature and reasoning effort" do
+    fake_chat = Class.new do
+      attr_reader :schema, :temperature, :params
+      def with_schema(schema) = tap { @schema = schema }
+      def with_temperature(temp) = tap { @temperature = temp }
+      def with_params(**params) = tap { @params = params }
+      def ask(_prompt) = Struct.new(:content).new({ "firstName" => "A", "lastName" => "B" })
+    end.new
+    captured = nil
+    RubyLLM.stub(:chat, ->(**kwargs) { captured = kwargs; fake_chat }) do
+      Ai::Client.stub(:global_rate_limiter, Struct.new(:x) { def acquire! = nil }.new(nil)) do
+        result = Ai::Client.structured_generate(prompt: "p", schema_class: Ai::Prompts::ExtractFullName::Schema)
+        assert_equal({ "firstName" => "A", "lastName" => "B" }, result)
+      end
+    end
+    assert_equal({ model: "gpt-5.6-luna", provider: :openai, assume_model_exists: true }, captured)
+    assert_equal Ai::Prompts::ExtractFullName::Schema, fake_chat.schema
+    assert_equal 0, fake_chat.temperature
+    assert_equal({ reasoning_effort: "low" }, fake_chat.params)
+  end
 end

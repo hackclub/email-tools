@@ -152,5 +152,28 @@ module Ai
         Ai::Client.define_singleton_method(:structured_generate, original_method)
       end
     end
+
+    test "merge schema allows arbitrary Loops fields" do
+      schema = Ai::Prompts::MergeContacts::Schema.new.to_json_schema[:schema]
+      assert_equal true, schema[:additionalProperties], "merged contact must accept arbitrary field names"
+      assert_nil schema[:properties], "an empty properties list makes newer models return {}"
+    end
+
+    test "uses the configured merge model and reasoning effort" do
+      captured = []
+      original_method = Ai::Client.method(:structured_generate)
+      Ai::Client.define_singleton_method(:structured_generate) do |**args|
+        captured << args
+        { "firstName" => "Zach" }
+      end
+      begin
+        Ai::ContactMergerService.call(contacts: [ { "email" => "a@x.com" } ], main_email: "a@x.com")
+      ensure
+        Ai::Client.define_singleton_method(:structured_generate, original_method)
+      end
+      assert_equal 3, captured.length
+      assert_equal "gpt-5.6-terra", captured.first[:model]
+      assert_equal "high", captured.first[:reasoning_effort]
+    end
   end
 end

@@ -3,6 +3,10 @@ require "json"
 module Ai
   class ContactMergerService
     MAX_RETRIES = 2
+    # Merging is low-volume (alt-unsubscribe flow only) and correctness matters more
+    # than cost here, so use a stronger model than the extraction default.
+    MODEL = ENV.fetch("LLM_MERGE_MODEL", "gpt-5.6-terra")
+    REASONING_EFFORT = ENV.fetch("LLM_MERGE_REASONING_EFFORT", "high")
 
     # Merges contact data using parallel AI calls for consistency.
     # @param contacts [Array<Hash>] An array of contact data hashes from the Loops API.
@@ -20,9 +24,9 @@ module Ai
             Ai::Client.structured_generate(
               prompt: prompt,
               schema_class: Ai::Prompts::MergeContacts::Schema,
-              model: "gpt-5",
+              model: MODEL,
               temp: 0,
-              reasoning_effort: "high"
+              reasoning_effort: REASONING_EFFORT
             )
           end
         end
