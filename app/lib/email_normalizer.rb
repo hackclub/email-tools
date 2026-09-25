@@ -4,6 +4,8 @@ module EmailNormalizer
   # @return [String, nil] Normalized email or nil if blank/invalid
   def self.normalize(email)
     return nil if email.nil?
+    email = email.first if email.is_a?(Array)
+    return nil if email.nil?
     normalized = email.to_s.strip.downcase
     normalized.empty? ? nil : normalized
   end

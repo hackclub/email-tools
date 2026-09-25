@@ -229,8 +229,7 @@ module Pollers
             record_fields = record["fields"] || {}
 
             if email_field
-              email_value = record_fields[email_field["name"]]
-              # Validate email pattern: .+@.+\..+ (same pattern as in build_filter_formula)
+              email_value = ValueNormalizer.from_airtable(record_fields[email_field["name"]])
               if email_value && email_value.to_s =~ /.+@.+\..+/
                 records << record
               end
@@ -313,7 +312,7 @@ module Pollers
 
           # If ANY field changed, send to the job
           unless changed_values.empty?
-            email = record_fields[email_field["name"]]
+            email = ValueNormalizer.from_airtable(record_fields[email_field["name"]])
             changed_records << {
               id: record_id,
               email: email,
