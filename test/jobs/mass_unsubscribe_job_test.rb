@@ -252,6 +252,60 @@ class MassUnsubscribeJobTest < ActiveSupport::TestCase
     end
   end
 
+  test "does not email the user while the job is still failing (only after retries are exhausted)" do
+    email_calls = 0
+    LoopsService.stub(:send_transactional_email, ->(*args, **kwargs) { email_calls += 1; { "success" => true } }) do
+      LoopsService.stub(:find_contact, ->(email:) { [] }) do
+        job = MassUnsubscribeJob.new
+        assert_raises(RuntimeError) { job.perform(@main_email, @alt_emails) }
+      end
+    end
+
+    assert_equal 0, email_calls, "A failing attempt must not send a results email; that is deferred to retries-exhausted"
+  end
+
+  test "deliver_failure_notice sends exactly one generic fallback email" do
+    captured = []
+    ENV.stub(:fetch, ->(*) { "transactional_id" }) do
+      LoopsService.stub(:send_transactional_email, ->(email:, transactional_id:, data_variables:) {
+        captured << { email: email, body: data_variables[:body] }
+        { "success" => true }
+      }) do
+        MassUnsubscribeJob.deliver_failure_notice(@main_email, StandardError.new("boom"))
+      end
+    end
+
+    assert_equal 1, captured.length
+    assert_equal @main_email, captured.first[:email]
+    assert_includes captured.first[:body], "We were sadly unable to process your request to mass unsubscribe #{@main_email}"
+    assert_includes captured.first[:body], "github.com/hackclub/email-tools"
+  end
+
+  test "out-of-tokens / quota errors are never shown to the user" do
+    quota = StandardError.new("You exceeded your current quota, please check your plan and billing details.")
+    assert_equal MassUnsubscribeJob::AI_SERVICE_ERROR_REF, MassUnsubscribeJob.user_safe_error(quota)
+
+    body = MassUnsubscribeJob.failure_email_body(@main_email, quota)
+    assert_includes body, MassUnsubscribeJob::AI_SERVICE_ERROR_REF
+    refute_match(/quota|billing|buy|credit|plan/i, body, "Raw billing/quota wording must not reach the user")
+  end
+
+  test "insufficient_quota and out of tokens phrasings both collapse to the generic ref" do
+    [ "insufficient_quota", "You are out of tokens", "insufficient quota for this request" ].each do |msg|
+      assert_equal MassUnsubscribeJob::AI_SERVICE_ERROR_REF,
+                   MassUnsubscribeJob.user_safe_error(StandardError.new(msg)),
+                   "Expected #{msg.inspect} to be treated as an AI billing error"
+    end
+  end
+
+  test "non-AI errors expose only the class name, not the raw message" do
+    err = ArgumentError.new("secret internal detail that should not leak")
+    assert_equal "ArgumentError", MassUnsubscribeJob.user_safe_error(err)
+
+    body = MassUnsubscribeJob.failure_email_body(@main_email, err)
+    refute_includes body, "secret internal detail that should not leak"
+  end
+
   test "only creates audit logs for fields that actually changed" do
     main_contact = { "email" => @main_email, "firstName" => "Zach", "lastName" => "Latta" }
     # Merged fields include some that changed and some that didn't

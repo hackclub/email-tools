@@ -5,6 +5,19 @@ class MassUnsubscribeJob
   include Sidekiq::Worker
   sidekiq_options queue: :default, retry: 3
 
+  # Error reference shown to the user when the underlying failure is an AI
+  # billing / quota ("out of tokens") problem. This is an operator-side billing
+  # issue, so the raw provider message (which tells the reader to buy more
+  # credits) must never reach the user - they can't and shouldn't act on it.
+  AI_SERVICE_ERROR_REF = "AI_SERVICE_UNAVAILABLE".freeze
+
+  # Send a single generic failure notice only after Sidekiq has exhausted all
+  # retries, so a failing job doesn't email the user once per attempt.
+  sidekiq_retries_exhausted do |job, exception|
+    main_email = job["args"]&.first
+    deliver_failure_notice(main_email, exception) if main_email.present?
+  end
+
   def perform(main_email, alt_emails)
     # Track results for email notification
     results = {
@@ -27,7 +40,6 @@ class MassUnsubscribeJob
         error_msg = "No contacts found for emails: #{all_emails.join(', ')}"
         Rails.logger.error("MassUnsubscribeJob: #{error_msg}")
         results[:errors] << error_msg
-        send_results_email(main_email, results)
         raise "No contacts found"
       end
 
@@ -80,7 +92,6 @@ class MassUnsubscribeJob
           error_msg = "All profile field batch updates failed for main contact #{main_email}"
           Rails.logger.error("MassUnsubscribeJob: #{error_msg}")
           results[:errors] << error_msg
-          send_results_email(main_email, results)
           raise "Failed to update main contact"
         end
 
@@ -102,7 +113,6 @@ class MassUnsubscribeJob
         error_msg = "Failed to update main contact #{main_email} profile fields"
         Rails.logger.error("MassUnsubscribeJob: #{error_msg}")
         results[:errors] << error_msg
-        send_results_email(main_email, results)
         raise "Failed to update main contact"
       end
 
@@ -255,9 +265,60 @@ class MassUnsubscribeJob
       Rails.logger.error("MassUnsubscribeJob: #{error_msg}")
       Rails.logger.error("MassUnsubscribeJob: Backtrace: #{e.backtrace.first(10).join("\n")}")
       results[:errors] << error_msg
-      send_results_email(main_email, results)
+      # Don't email here: a user-facing failure notice is sent exactly once,
+      # by sidekiq_retries_exhausted, after all retries are spent - so a
+      # retrying job doesn't email the user again on every failed attempt.
       raise # Re-raise for Sidekiq retry
     end
+  end
+
+  # Builds the single user-facing failure notice sent after retries are
+  # exhausted. Kept free of raw internal/provider error text on purpose.
+  def self.deliver_failure_notice(main_email, exception)
+    transactional_id = ENV.fetch("LOOPS_ALT_UNSUBSCRIBE_RESULTS_TRANSACTIONAL_ID")
+    body = failure_email_body(main_email, exception)
+
+    Rails.logger.info("MassUnsubscribeJob: Sending failure notice to #{main_email}")
+    LoopsService.send_transactional_email(
+      email: main_email,
+      transactional_id: transactional_id,
+      data_variables: { body: body }
+    )
+  rescue => e
+    Rails.logger.error(
+      "MassUnsubscribeJob: Failed to send failure notice to #{main_email}: #{e.class} - #{e.message}"
+    )
+  end
+
+  def self.failure_email_body(main_email, exception)
+    [
+      "Hey!",
+      "",
+      "We were sadly unable to process your request to mass unsubscribe #{main_email}. " \
+      "Please make a post in #hq-engineering on the Hack Club Slack " \
+      "(https://hackclub.slack.com/archives/C05SVRTCDGV) and include the error below, " \
+      "and we will fix this for you.",
+      "",
+      "https://github.com/hackclub/email-tools",
+      "",
+      "Error: #{user_safe_error(exception)}"
+    ].join("\n")
+  end
+
+  # Maps an exception to a reference string safe to show the user. AI billing /
+  # quota ("out of tokens") failures collapse to a generic ref so the user is
+  # never told to buy more credits; everything else exposes only the error
+  # class name, never the raw message.
+  def self.user_safe_error(exception)
+    klass = exception&.class.to_s
+    message = exception&.message.to_s
+
+    ai_billing = klass.include?("RubyLLM") ||
+                 message.match?(/quota|insufficient[_ ]?quota|billing|exceeded your current|out of (tokens|credit)/i)
+
+    return AI_SERVICE_ERROR_REF if ai_billing
+
+    klass.presence || "UNKNOWN_ERROR"
   end
 
   private
