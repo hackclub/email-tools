@@ -47,6 +47,8 @@ class ApplicationController < ActionController::Base
       session[:auth_purpose] = "mass_unsubscribe"
     elsif path == profile_edit_path
       session[:auth_purpose] = "profile_update"
+    elsif path == subscriptions_path
+      session[:auth_purpose] = "subscriptions"
     end
   end
 

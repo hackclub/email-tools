@@ -434,6 +434,41 @@ input.otp-code {
   font-size: 14px;
 }
 
+/* Subscription options */
+.subscription-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--hc-space-sm);
+  background-color: var(--hc-sheet);
+  padding: var(--hc-space-sm) var(--hc-space-md);
+  border-radius: var(--hc-radius-md);
+  margin-bottom: var(--hc-space-sm);
+}
+
+.subscription-option input[type="checkbox"] {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.subscription-option label {
+  margin-bottom: 0;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.subscription-option-primary label {
+  font-weight: 600;
+}
+
+.subscription-option-description {
+  display: block;
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--hc-muted);
+}
+
 /* Info Box */
 .info-box {
   background-color: var(--hc-sheet);

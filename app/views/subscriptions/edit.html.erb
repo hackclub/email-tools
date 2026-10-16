@@ -1,0 +1,66 @@
+<% content_for :title, "Manage Subscriptions" %>
+
+<div class="container">
+  <h1>Manage Subscriptions</h1>
+
+<% if flash[:notice] %>
+  <div class="alert alert-notice"><%= flash[:notice] %></div>
+<% end %>
+
+<% if flash[:error] %>
+  <div class="alert alert-error"><%= flash[:error] %></div>
+<% end %>
+
+<% subscribed = @contact.present? && @contact["subscribed"] != false %>
+
+<p class="text-muted" style="margin-bottom: 32px; font-size: 16px;">
+  <% if @contact.nil? %>
+    <strong><%= @email %></strong> isn't on Hack Club's email list yet. Subscribe below to start getting emails.
+  <% elsif subscribed %>
+    <strong><%= @email %></strong> is subscribed to Hack Club emails. Choose which lists you're on below.
+  <% else %>
+    <strong><%= @email %></strong> is unsubscribed from Hack Club emails. Resubscribe below to get back on the list.
+  <% end %>
+</p>
+
+<%= form_with url: subscriptions_path, method: :patch, local: true do |form| %>
+  <div class="subscription-option subscription-option-primary">
+    <%= hidden_field_tag :subscribed, "0", id: nil %>
+    <%= check_box_tag :subscribed, "1", @contact.nil? || subscribed, id: "subscribed" %>
+    <label for="subscribed">
+      Receive emails from Hack Club
+      <span class="subscription-option-description">Uncheck to unsubscribe from all Hack Club emails.</span>
+    </label>
+  </div>
+
+  <% if @lists.any? %>
+    <h2 style="font-size: 20px; margin: 32px 0 16px;">Mailing lists</h2>
+
+    <% @lists.each do |list| %>
+      <div class="subscription-option">
+        <%= check_box_tag "list_ids[]", list.loops_list_id, @checked_list_ids.include?(list.loops_list_id), id: "list_#{list.loops_list_id}" %>
+        <label for="list_<%= list.loops_list_id %>">
+          <%= list.name %>
+          <% if list.description.present? %>
+            <span class="subscription-option-description"><%= list.description %></span>
+          <% end %>
+        </label>
+      </div>
+    <% end %>
+
+    <p class="text-muted" style="font-size: 14px;">Mailing list choices only apply while you're subscribed.</p>
+  <% end %>
+
+  <div class="form-actions">
+    <% submit_label = if @contact.nil? then "Subscribe" elsif subscribed then "Save" else "Save & Resubscribe" end %>
+    <%= form.submit submit_label, class: "btn btn-full" %>
+  </div>
+<% end %>
+
+<div class="info-box">
+  <strong>Want to subscribe a different email?</strong>
+  <%= link_to "Switch email", auth_change_email_path(redirect_to: subscriptions_path) %> and verify it, then come back here.
+</div>
+
+<%= render "shared/authenticated_footer" %>
+</div>

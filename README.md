@@ -42,6 +42,10 @@ Currently supported:
 
 - Select specific Airtable bases to sync
 
+## Self-service subscriptions
+
+`/subscriptions` lets anyone verify an email with a one-time code, then subscribe it (creating the Loops contact if it's new), resubscribe after a past unsubscribe, unsubscribe, or choose which public mailing lists they're on. List opt-outs are recorded in `loops_list_subscriptions` so the Airtable sync never re-adds them, and every change is written to the audit log as self-service.
+
 ## Config
 
 ```
@@ -74,7 +78,6 @@ SIDEKIQ_SCHEDULER=1
 
 ## To-Do
 
-- Re-subscribe support (dangerous, needs to be implemented carefully)
 - Write-back to SyncSource with status so users can see success / error
   - Maybe pull from envelopes? Show detailed errors
 - For `LlmCache`, we probably don't need to store the full request. Hash is probably enough.

@@ -95,7 +95,7 @@ class AuthController < ApplicationController
         old_token = session[:auth_token]
 
         # Store redirect destination before reset_session clears it
-        destination = safe_path(profile_edit_path)
+        destination = safe_path(session[:change_email_redirect] || profile_edit_path)
 
         # Rotate session to prevent fixation attacks
         reset_session
@@ -175,6 +175,8 @@ class AuthController < ApplicationController
 
   def show_change_email
     @current_email = current_authenticated_email
+    session[:change_email_redirect] = params[:redirect_to].present? ? safe_path(params[:redirect_to]) : nil
+    @cancel_path = session[:change_email_redirect] || profile_edit_path
   end
 
   def change_email_request_otp

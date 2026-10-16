@@ -3,6 +3,8 @@
 <div class="container-narrow">
   <% if session[:auth_purpose] == "mass_unsubscribe" %>
     <h1>Mass Unsubscribe +Alt Emails</h1>
+  <% elsif session[:auth_purpose] == "subscriptions" %>
+    <h1>Manage Subscriptions</h1>
   <% else %>
     <h1>Change Profile Information</h1>
   <% end %>

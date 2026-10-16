@@ -24,6 +24,10 @@ Rails.application.routes.draw do
   get "profile/edit", to: "profile_update#edit", as: :profile_edit
   patch "profile", to: "profile_update#update", as: :profile
 
+  # Subscription management routes (require OTP auth)
+  get "subscriptions", to: "subscriptions#edit", as: :subscriptions
+  patch "subscriptions", to: "subscriptions#update"
+
   # Alt email management routes (require OTP auth)
   get "alts", to: "alts#index", as: :alts
   post "alts/unsubscribe", to: "alts#unsubscribe", as: :alts_unsubscribe
