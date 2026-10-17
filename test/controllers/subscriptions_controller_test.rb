@@ -80,7 +80,7 @@ class SubscriptionsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to auth_otp_request_path
   end
 
-  test "edit shows public lists with current memberships and hides private lists" do
+  test "edit shows public lists and private lists the person is on, with current memberships" do
     authenticate_user
     contact = { "email" => @email, "subscribed" => true, "mailingLists" => { "list_news" => true, "list_private" => true } }
 
@@ -88,10 +88,45 @@ class SubscriptionsControllerTest < ActionDispatch::IntegrationTest
       get subscriptions_path
       assert_response :success
       assert_match(/is subscribed to Hack Club emails/, response.body)
+      assert_select "nav.breadcrumb a[href=?]", root_path
       assert_select "input#list_list_news[checked]"
       assert_select "input#list_list_events:not([checked])"
-      assert_select "input#list_list_private", count: 0
+      assert_select "input#list_list_private[checked]"
       assert_select "input[type=submit][value=Save]"
+    end
+  end
+
+  test "edit hides private lists the person was never on" do
+    authenticate_user
+    with_loops({ "email" => @email, "subscribed" => true, "mailingLists" => { "list_news" => true } }) do
+      get subscriptions_path
+      assert_select "input#list_list_private", count: 0
+    end
+  end
+
+  test "edit shows lists the person was previously on, unchecked" do
+    authenticate_user
+    LoopsListSubscription.create!(email_normalized: @email_normalized, list_id: "list_private")
+    LoopsContactChangeAudit.create!(occurred_at: Time.current, email_normalized: @email_normalized,
+      field_name: "mailingList:list_events", former_loops_value: true, new_loops_value: false, strategy: "unsubscribe", is_self_service: true)
+
+    with_loops({ "email" => @email, "subscribed" => false, "mailingLists" => {} }) do
+      get subscriptions_path
+      assert_select "input#list_list_private:not([checked])"
+      assert_select "input#list_list_events:not([checked])"
+      assert_equal 2, response.body.scan("You were on this list before.").size
+    end
+  end
+
+  test "can rejoin a private list the person was previously on" do
+    authenticate_user
+    LoopsListSubscription.create!(email_normalized: @email_normalized, list_id: "list_private")
+
+    with_loops({ "email" => @email, "subscribed" => false, "mailingLists" => {} }) do |captured|
+      patch subscriptions_path, params: { subscribed: "1", list_ids: [ "list_private" ] }
+
+      assert_match(/resubscribed/, flash[:notice])
+      assert_equal({ subscribed: true, mailingLists: { "list_private" => true } }, captured.first[:payload])
     end
   end
 

@@ -1,6 +1,7 @@
 <% content_for :title, "Edit Profile" %>
 
 <div class="container">
+  <%= render "shared/breadcrumb", current: "Edit Profile" %>
   <h1>Edit Profile</h1>
 
 <% if flash[:notice] %>

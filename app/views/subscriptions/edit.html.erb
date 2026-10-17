@@ -1,6 +1,7 @@
 <% content_for :title, "Manage Subscriptions" %>
 
 <div class="container">
+  <%= render "shared/breadcrumb", current: "Manage Subscriptions" %>
   <h1>Manage Subscriptions</h1>
 
 <% if flash[:notice] %>
@@ -43,6 +44,9 @@
           <%= list.name %>
           <% if list.description.present? %>
             <span class="subscription-option-description"><%= list.description %></span>
+          <% end %>
+          <% if @previous_list_ids.include?(list.loops_list_id) %>
+            <span class="subscription-option-description">You were on this list before.</span>
           <% end %>
         </label>
       </div>

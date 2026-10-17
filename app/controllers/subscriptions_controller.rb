@@ -6,7 +6,8 @@ require "securerandom"
 # - subscribe it to Hack Club emails (creating the Loops contact if it's new)
 # - resubscribe it after a past unsubscribe
 # - unsubscribe it
-# - choose which public mailing lists it's on
+# - choose which mailing lists it's on: every public list, plus any list it's on
+#   now or was on before (even private ones), so people can get back on them
 class SubscriptionsController < ApplicationController
   skip_before_action :authenticate_admin
   before_action :require_authenticated_session
@@ -17,8 +18,9 @@ class SubscriptionsController < ApplicationController
   def edit
     @email = current_authenticated_email
     @contact = fetch_contact(@email)
-    @lists = public_lists
+    @lists = visible_lists(@contact, EmailNormalizer.normalize(@email))
     @checked_list_ids = checked_list_ids(@contact, @lists)
+    @previous_list_ids = past_list_ids(EmailNormalizer.normalize(@email)) - @checked_list_ids
   rescue => e
     Rails.logger.error("SubscriptionsController#edit error: #{e.class} - #{e.message}")
     flash[:error] = "Failed to load your subscriptions. Please try again."
@@ -29,19 +31,19 @@ class SubscriptionsController < ApplicationController
     email = current_authenticated_email
     email_normalized = EmailNormalizer.normalize(email)
     contact = fetch_contact(email)
-    lists = public_lists
+    lists = visible_lists(contact, email_normalized)
 
     currently_subscribed = contact.present? && contact["subscribed"] != false
     wants_subscribed = params[:subscribed] == "1"
 
-    # Only public lists can be changed here; ignore anything else that's submitted
-    public_ids = lists.map(&:loops_list_id)
-    selected_ids = Array(params[:list_ids]).map(&:to_s) & public_ids
+    # Only lists shown on the page can be changed here; ignore anything else that's submitted
+    visible_ids = lists.map(&:loops_list_id)
+    selected_ids = Array(params[:list_ids]).map(&:to_s) & visible_ids
     current_memberships = contact&.dig("mailingLists") || {}
 
     list_changes = {}
     if wants_subscribed
-      public_ids.each do |list_id|
+      visible_ids.each do |list_id|
         wanted = selected_ids.include?(list_id)
         list_changes[list_id] = wanted if wanted != (current_memberships[list_id] == true)
       end
@@ -101,22 +103,40 @@ class SubscriptionsController < ApplicationController
     LoopsService.find_contact(email: email).first
   end
 
-  def public_lists
-    LoopsList.where(is_public: true).order(:name).to_a
+  # Public lists, plus every list this email is on now or was ever on: current
+  # Loops memberships, lists our sync added it to, and lists changed in audits
+  def visible_lists(contact, email_normalized)
+    known_ids = past_list_ids(email_normalized)
+    (contact&.dig("mailingLists") || {}).each { |id, on| known_ids << id.to_s if on == true }
+
+    lists = LoopsList.where(is_public: true).or(LoopsList.where(loops_list_id: known_ids)).to_a
+    lists.sort_by { |l| l.name.to_s.downcase }
+  end
+
+  def past_list_ids(email_normalized)
+    ids = LoopsListSubscription.where(email_normalized: email_normalized).pluck(:list_id)
+    ids += LoopsContactChangeAudit
+      .where(email_normalized: email_normalized)
+      .where("field_name LIKE 'mailingList:%'")
+      .distinct
+      .pluck(:field_name)
+      .map { |f| f.delete_prefix("mailingList:") }
+    ids.uniq
   end
 
   # Lists to show as checked: current memberships, or the default list for
   # someone who isn't in Loops yet
   def checked_list_ids(contact, lists)
-    public_ids = lists.map(&:loops_list_id)
+    list_ids = lists.map(&:loops_list_id)
 
     if contact.nil?
       default_id = ENV["DEFAULT_LOOPS_LIST_ID"].presence
-      return public_ids.include?(default_id) ? [ default_id ] : []
+      default_list = lists.find { |l| l.loops_list_id == default_id }
+      return default_list&.is_public ? [ default_id ] : []
     end
 
     memberships = contact["mailingLists"] || {}
-    public_ids.select { |id| memberships[id] == true }
+    list_ids.select { |id| memberships[id] == true }
   end
 
   def record_changes(email_normalized:, request_id:, subscribed_change:, list_changes:, lists:)

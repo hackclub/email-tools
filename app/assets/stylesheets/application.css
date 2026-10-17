@@ -434,6 +434,21 @@ input.otp-code {
   font-size: 14px;
 }
 
+/* Breadcrumb */
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--hc-space-sm);
+  margin-bottom: var(--hc-space-md);
+  font-size: 14px;
+  color: var(--hc-muted);
+}
+
+.breadcrumb a {
+  font-weight: 600;
+}
+
 /* Subscription options */
 .subscription-option {
   display: flex;
