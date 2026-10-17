@@ -58,13 +58,13 @@ module Ai
 
         # Set reasoning effort (all current OpenAI GPT-5+ models accept this)
         effort = reasoning_effort || default_reasoning_effort(model_to_use)
-        chat = chat.with_params(reasoning_effort: effort)
+        chat = chat.with_thinking(effort: effort.to_sym)
 
         response = chat.ask(prompt)
 
         latency_ms = ((Time.current - start_time) * 1000).round
 
-        parsed_data = response.content
+        parsed_data = response.parsed
 
         Rails.logger.info(
           "Ai::Client.structured_generate: model=#{model_to_use}, " \

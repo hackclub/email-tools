@@ -225,11 +225,11 @@ class Ai::ClientTest < ActiveSupport::TestCase
 
   test "structured_generate builds an OpenAI chat with model, schema, temperature and reasoning effort" do
     fake_chat = Class.new do
-      attr_reader :schema, :temperature, :params
+      attr_reader :schema, :temperature, :thinking
       def with_schema(schema) = tap { @schema = schema }
       def with_temperature(temp) = tap { @temperature = temp }
-      def with_params(**params) = tap { @params = params }
-      def ask(_prompt) = Struct.new(:content).new({ "firstName" => "A", "lastName" => "B" })
+      def with_thinking(**options) = tap { @thinking = options }
+      def ask(_prompt) = Struct.new(:parsed).new({ "firstName" => "A", "lastName" => "B" })
     end.new
     captured = nil
     RubyLLM.stub(:chat, ->(**kwargs) { captured = kwargs; fake_chat }) do
@@ -241,6 +241,6 @@ class Ai::ClientTest < ActiveSupport::TestCase
     assert_equal({ model: "gpt-5.6-luna", provider: :openai, assume_model_exists: true }, captured)
     assert_equal Ai::Prompts::ExtractFullName::Schema, fake_chat.schema
     assert_equal 0, fake_chat.temperature
-    assert_equal({ reasoning_effort: "low" }, fake_chat.params)
+    assert_equal({ effort: :low }, fake_chat.thinking)
   end
 end
