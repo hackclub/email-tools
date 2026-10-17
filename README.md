@@ -44,7 +44,7 @@ Currently supported:
 
 ## Self-service subscriptions
 
-`/subscriptions` lets anyone verify an email with a one-time code, then subscribe it (creating the Loops contact if it's new), resubscribe after a past unsubscribe, unsubscribe, or choose which public mailing lists they're on. List opt-outs are recorded in `loops_list_subscriptions` so the Airtable sync never re-adds them, and every change is written to the audit log as self-service.
+`/subscriptions` lets anyone verify an email with a one-time code, then subscribe it (creating the Loops contact if it's new), resubscribe after a past unsubscribe, unsubscribe, or choose which public mailing lists they're on. Changes don't call Loops from the web request. Each save is queued as a `loops_outbox_envelopes` row (`provenance.sync_source_type = "self_service"`, with who asked, from where, and the state they saw) and sent by `LoopsDispatchWorker`, the same per-email-locked, rate-limited pipeline the Airtable sync uses. After Loops confirms, the dispatcher writes one `loops_contact_change_audits` row per changed field (`is_self_service = true`, linked to the envelope and Loops request id) and updates baselines. Failed sends are marked `failed` with the error and write no audit. List opt-outs are recorded in `loops_list_subscriptions` so the Airtable sync never re-adds them; an explicit rejoin on this page bypasses that check. The page shows pending changes immediately and a "Recent changes" log (pending, failed and completed changes, from this page or from syncs); admins see the same audit rows, tagged self-service, on `/emails/:email`.
 
 ## Config
 

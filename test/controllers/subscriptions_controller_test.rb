@@ -33,6 +33,8 @@ class SubscriptionsControllerTest < ActionDispatch::IntegrationTest
     AuthenticatedSession.where(email_normalized: @email_normalized).delete_all
     LoopsContactChangeAudit.where(email_normalized: @email_normalized).delete_all
     LoopsListSubscription.where(email_normalized: @email_normalized).delete_all
+    LoopsOutboxEnvelope.where(email_normalized: @email_normalized).delete_all
+    LoopsFieldBaseline.where(email_normalized: @email_normalized).delete_all
   end
 
   def with_singleton_method_stub(object, method_name, replacement)
@@ -66,6 +68,15 @@ class SubscriptionsControllerTest < ActionDispatch::IntegrationTest
         yield captured
       end
     end
+  end
+
+  # Runs the outbox dispatcher for this email, as LoopsDispatchWorker does every 10s
+  def dispatch!
+    LoopsDispatchWorker.new.send(:process_email, @email_normalized)
+  end
+
+  def last_envelope
+    LoopsOutboxEnvelope.where(email_normalized: @email_normalized).order(:created_at).last
   end
 
   test "edit requires authentication and remembers destination" do
@@ -120,13 +131,19 @@ class SubscriptionsControllerTest < ActionDispatch::IntegrationTest
 
   test "can rejoin a private list the person was previously on" do
     authenticate_user
+    # The sync's opt-out marker must not stop an explicit rejoin
     LoopsListSubscription.create!(email_normalized: @email_normalized, list_id: "list_private")
 
     with_loops({ "email" => @email, "subscribed" => false, "mailingLists" => {} }) do |captured|
       patch subscriptions_path, params: { subscribed: "1", list_ids: [ "list_private" ] }
-
       assert_match(/resubscribed/, flash[:notice])
+      assert_empty captured, "page must queue, not call Loops directly"
+
+      dispatch!
       assert_equal({ subscribed: true, mailingLists: { "list_private" => true } }, captured.first[:payload])
+      audit = LoopsContactChangeAudit.find_by(email_normalized: @email_normalized, field_name: "mailingList:list_private")
+      assert_equal "subscribe", audit.strategy
+      assert audit.is_self_service
     end
   end
 
@@ -139,20 +156,39 @@ class SubscriptionsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "resubscribes an unsubscribed contact" do
+  test "resubscribe is queued in the outbox, then sent and audited by the dispatcher" do
     authenticate_user
     with_loops({ "email" => @email, "subscribed" => false, "mailingLists" => { "list_news" => true } }) do |captured|
       patch subscriptions_path, params: { subscribed: "1", list_ids: [ "list_news" ] }
 
       assert_redirected_to subscriptions_path
       assert_match(/resubscribed/, flash[:notice])
-      assert_equal 1, captured.size
-      assert_equal({ subscribed: true }, captured.first[:payload])
+      assert_empty captured
+      assert_equal 0, LoopsContactChangeAudit.where(email_normalized: @email_normalized).count
+
+      envelope = last_envelope
+      assert envelope.queued?
+      assert envelope.self_service?
+      assert_nil envelope.sync_source_id
+      assert_equal true, envelope.payload.dig("subscribed", "value")
+      assert_equal "subscription_management", envelope.provenance["purpose"]
+      assert_equal @email, envelope.provenance["authenticated_email"]
+      assert_equal false, envelope.provenance.dig("observed", "subscribed")
+      assert envelope.provenance.dig("request", "ip").present?
+
+      dispatch!
+      assert_equal [ { email: @email_normalized, payload: { subscribed: true } } ], captured
+      assert envelope.reload.sent?
 
       audit = LoopsContactChangeAudit.find_by(email_normalized: @email_normalized, field_name: "subscribed")
       assert audit.is_self_service
+      assert_nil audit.sync_source_id
       assert_equal false, audit.former_loops_value
       assert_equal true, audit.new_loops_value
+      assert_equal "req_1", audit.request_id
+      assert_equal envelope.id, audit.provenance["outbox_envelope_id"]
+      assert_equal "subscription_management", audit.provenance["purpose"]
+      assert_equal true, LoopsFieldBaseline.find_by(email_normalized: @email_normalized, field_name: "subscribed").last_sent_value
     end
   end
 
@@ -160,14 +196,18 @@ class SubscriptionsControllerTest < ActionDispatch::IntegrationTest
     authenticate_user
     with_loops(nil) do |captured|
       patch subscriptions_path, params: { subscribed: "1", list_ids: [ "list_events" ] }
+      assert_match(/subscribed to Hack Club emails/, flash[:notice])
 
-      assert_match(/You're subscribed/, flash[:notice])
+      dispatch!
       assert_equal 1, captured.size
       payload = captured.first[:payload]
       assert_equal true, payload[:subscribed]
       assert_equal SubscriptionsController::NEW_CONTACT_SOURCE, payload[:source]
+      assert_equal "Hack Clubber", payload[:userGroup]
       assert_equal({ "list_events" => true }, payload[:mailingLists])
       assert LoopsListSubscription.exists?(email_normalized: @email_normalized, list_id: "list_events")
+      assert_equal %w[mailingList:list_events source subscribed userGroup],
+        LoopsContactChangeAudit.where(email_normalized: @email_normalized).pluck(:field_name).sort
     end
   end
 
@@ -187,14 +227,18 @@ class SubscriptionsControllerTest < ActionDispatch::IntegrationTest
     contact = { "email" => @email, "subscribed" => true, "mailingLists" => { "list_news" => true } }
     with_loops(contact) do |captured|
       patch subscriptions_path, params: { subscribed: "1", list_ids: [ "list_events", "list_private" ] }
+      assert_match(/mailing list changes are saved/, flash[:notice])
+      assert_equal({ "list_news" => false, "list_events" => true }, last_envelope.payload.dig("mailingLists", "value"))
 
-      assert_equal "Your mailing lists have been updated.", flash[:notice]
+      dispatch!
       assert_equal 1, captured.size
       assert_equal({ mailingLists: { "list_news" => false, "list_events" => true } }, captured.first[:payload])
 
       # Opt-out is remembered so the Airtable sync won't re-add the list
       assert LoopsListSubscription.exists?(email_normalized: @email_normalized, list_id: "list_news")
-      assert_equal "unsubscribe", LoopsContactChangeAudit.find_by(email_normalized: @email_normalized, field_name: "mailingList:list_news").strategy
+      audit = LoopsContactChangeAudit.find_by(email_normalized: @email_normalized, field_name: "mailingList:list_news")
+      assert_equal "unsubscribe", audit.strategy
+      assert_equal "Newsletter", audit.provenance.dig("list", "name")
     end
   end
 
@@ -202,18 +246,68 @@ class SubscriptionsControllerTest < ActionDispatch::IntegrationTest
     authenticate_user
     with_loops({ "email" => @email, "subscribed" => true, "mailingLists" => { "list_news" => true } }) do |captured|
       patch subscriptions_path, params: { subscribed: "0", list_ids: [] }
-
       assert_match(/unsubscribed/, flash[:notice])
-      assert_equal [ { email: @email, payload: { subscribed: false } } ], captured
+
+      dispatch!
+      assert_equal [ { email: @email_normalized, payload: { subscribed: false } } ], captured
     end
   end
 
-  test "no changes does not call Loops" do
+  test "no changes does not queue anything" do
     authenticate_user
     with_loops({ "email" => @email, "subscribed" => true, "mailingLists" => { "list_news" => true } }) do |captured|
       patch subscriptions_path, params: { subscribed: "1", list_ids: [ "list_news" ] }
       assert_equal "No changes detected", flash[:notice]
-      assert_empty captured
+      assert_nil last_envelope
+    end
+  end
+
+  test "edit shows pending changes before they are sent, and the change log after" do
+    authenticate_user
+    with_loops({ "email" => @email, "subscribed" => true, "mailingLists" => { "list_news" => true } }) do
+      patch subscriptions_path, params: { subscribed: "1", list_ids: [ "list_events" ] }
+
+      get subscriptions_path
+      assert_match(/Saving your latest changes/, response.body)
+      assert_select "input#list_list_news:not([checked])"
+      assert_select "input#list_list_events[checked]"
+      assert_select ".change-log li", text: /Leave Newsletter, Join Events.*saving/m
+
+      # A second submit diffs against the pending state, not stale Loops state
+      patch subscriptions_path, params: { subscribed: "1", list_ids: [ "list_events" ] }
+      assert_equal "No changes detected", flash[:notice]
+
+      dispatch!
+    end
+
+    with_loops({ "email" => @email, "subscribed" => true, "mailingLists" => { "list_events" => true } }) do
+      get subscriptions_path
+      assert_no_match(/Saving your latest changes/, response.body)
+      assert_select ".change-log li", text: /Joined Events.*you, on this page/m
+      assert_select ".change-log li", text: /Left Newsletter/
+    end
+  end
+
+  test "a failed send marks the envelope failed, writes no audit, and shows in the change log" do
+    authenticate_user
+    with_loops({ "email" => @email, "subscribed" => false, "mailingLists" => {} }) do
+      patch subscriptions_path, params: { subscribed: "1" }
+    end
+
+    failing = ->(**args) { raise LoopsService::ApiError.new(500, '{"message":"boom"}') }
+    with_singleton_method_stub(LoopsService, :find_contact, ->(**args) { [ { "email" => @email, "subscribed" => false } ] }) do
+      with_singleton_method_stub(LoopsService, :update_contact, failing) do
+        dispatch!
+      end
+    end
+
+    assert last_envelope.failed?
+    assert_equal "self_service", last_envelope.error["stage"]
+    assert_equal 0, LoopsContactChangeAudit.where(email_normalized: @email_normalized).count
+
+    with_loops({ "email" => @email, "subscribed" => false, "mailingLists" => {} }) do
+      get subscriptions_path
+      assert_select ".change-log li", text: /Subscribe to Hack Club emails.*failed/m
     end
   end
 

@@ -1,5 +1,3 @@
-require "securerandom"
-
 # Self-service subscription management (requires OTP auth, NOT admin auth).
 #
 # Lets someone verify an email and then:
@@ -8,48 +6,60 @@ require "securerandom"
 # - unsubscribe it
 # - choose which mailing lists it's on: every public list, plus any list it's on
 #   now or was on before (even private ones), so people can get back on them
+#
+# Changes go through the Loops outbox (LoopsOutboxEnvelope -> LoopsDispatchWorker)
+# like every other Loops write, so they get the same per-email locking, rate
+# limiting, baselines and LoopsContactChangeAudit rows (is_self_service = true).
 class SubscriptionsController < ApplicationController
   skip_before_action :authenticate_admin
   before_action :require_authenticated_session
 
   NEW_CONTACT_SOURCE = "Email Tools Self-Service".freeze
-  LISTS_PER_REQUEST = 10
 
   def edit
     @email = current_authenticated_email
+    email_normalized = EmailNormalizer.normalize(@email)
     @contact = fetch_contact(@email)
-    @lists = visible_lists(@contact, EmailNormalizer.normalize(@email))
-    @checked_list_ids = checked_list_ids(@contact, @lists)
-    @previous_list_ids = past_list_ids(EmailNormalizer.normalize(@email)) - @checked_list_ids
+    @pending = pending_envelopes(email_normalized)
+    @lists = visible_lists(@contact, email_normalized)
+    @subscribed = effective_subscribed(@contact, @pending)
+    @checked_list_ids = checked_list_ids(@contact, @lists, @pending)
+    @previous_list_ids = past_list_ids(email_normalized) - @checked_list_ids
+    @change_log = change_log(email_normalized)
   rescue => e
     Rails.logger.error("SubscriptionsController#edit error: #{e.class} - #{e.message}")
     flash[:error] = "Failed to load your subscriptions. Please try again."
     redirect_to root_path
   end
 
+  # Queues the change in the Loops outbox, the same pipeline the Airtable sync
+  # uses. LoopsDispatchWorker sends it and writes the audit log once Loops
+  # confirms; the page shows it as pending until then.
   def update
     email = current_authenticated_email
     email_normalized = EmailNormalizer.normalize(email)
     contact = fetch_contact(email)
+    pending = pending_envelopes(email_normalized)
     lists = visible_lists(contact, email_normalized)
 
-    currently_subscribed = contact.present? && contact["subscribed"] != false
+    currently_subscribed = effective_subscribed(contact, pending)
     wants_subscribed = params[:subscribed] == "1"
 
     # Only lists shown on the page can be changed here; ignore anything else that's submitted
     visible_ids = lists.map(&:loops_list_id)
     selected_ids = Array(params[:list_ids]).map(&:to_s) & visible_ids
-    current_memberships = contact&.dig("mailingLists") || {}
+    new_contact = contact.nil? && pending.empty?
+    current_ids = new_contact ? [] : checked_list_ids(contact, lists, pending)
 
     list_changes = {}
     if wants_subscribed
       visible_ids.each do |list_id|
         wanted = selected_ids.include?(list_id)
-        list_changes[list_id] = wanted if wanted != (current_memberships[list_id] == true)
+        list_changes[list_id] = wanted if wanted != current_ids.include?(list_id)
       end
     end
 
-    subscribed_changed = wants_subscribed != currently_subscribed
+    subscribed_changed = new_contact ? wants_subscribed : wants_subscribed != currently_subscribed
 
     if !subscribed_changed && list_changes.empty?
       flash[:notice] = "No changes detected"
@@ -57,36 +67,36 @@ class SubscriptionsController < ApplicationController
       return
     end
 
-    # First request carries the subscription status (and initial fields for new
-    # contacts); mailing lists go in batches since large payloads fail
-    requests = []
-    first_payload = {}
-    first_payload[:subscribed] = wants_subscribed if subscribed_changed
+    now = Time.current.iso8601
+    payload = {}
+    payload["subscribed"] = { value: wants_subscribed, strategy: :override, modified_at: now } if subscribed_changed
+    payload["mailingLists"] = { value: list_changes, strategy: :override, modified_at: now } if list_changes.any?
     if contact.nil?
-      first_payload[:source] = NEW_CONTACT_SOURCE
-      first_payload[:userGroup] = "Hack Clubber"
+      payload["source"] = { value: NEW_CONTACT_SOURCE, strategy: :upsert, modified_at: now }
+      payload["userGroup"] = { value: "Hack Clubber", strategy: :upsert, modified_at: now }
     end
-    list_batches = list_changes.to_a.each_slice(LISTS_PER_REQUEST).map(&:to_h)
-    first_payload[:mailingLists] = list_batches.shift if list_batches.any?
-    requests << first_payload
-    list_batches.each { |batch| requests << { mailingLists: batch } }
 
-    request_id = nil
-    requests.each do |payload|
-      response = LoopsService.update_contact(email: email, **payload)
-      unless response && response["success"] == true
-        raise "Loops update failed: #{response.inspect}"
-      end
-      request_id ||= response["id"]
-    end
-    request_id ||= SecureRandom.uuid
-
-    record_changes(
+    LoopsOutboxEnvelope.create!(
       email_normalized: email_normalized,
-      request_id: request_id,
-      subscribed_change: subscribed_changed ? [ currently_subscribed, wants_subscribed ] : nil,
-      list_changes: list_changes,
-      lists: lists
+      payload: payload,
+      provenance: {
+        sync_source_type: LoopsOutboxEnvelope::SELF_SERVICE_SOURCE_TYPE,
+        purpose: "subscription_management",
+        initiated_by: "user",
+        page: "subscriptions",
+        authenticated_email: email,
+        observed: {
+          contact_existed: contact.present?,
+          subscribed: new_contact ? nil : currently_subscribed,
+          mailing_lists: visible_ids.index_with { |id| current_ids.include?(id) }
+        },
+        request: {
+          ip: request.remote_ip,
+          user_agent: request.user_agent.to_s.first(500),
+          requested_at: now
+        }
+      },
+      status: :queued
     )
 
     flash[:notice] = success_message(contact, wants_subscribed, subscribed_changed)
@@ -124,73 +134,87 @@ class SubscriptionsController < ApplicationController
     ids.uniq
   end
 
-  # Lists to show as checked: current memberships, or the default list for
-  # someone who isn't in Loops yet
-  def checked_list_ids(contact, lists)
+  # Self-service changes still waiting for LoopsDispatchWorker, oldest first
+  def pending_envelopes(email_normalized)
+    LoopsOutboxEnvelope.queued.self_service.for_email(email_normalized).order(:created_at).to_a
+  end
+
+  # Subscribed state as it will be once pending changes are sent
+  def effective_subscribed(contact, pending)
+    subscribed = contact.present? && contact["subscribed"] != false
+    pending.each do |envelope|
+      subscribed = envelope.payload.dig("subscribed", "value") == true if envelope.payload.key?("subscribed")
+    end
+    subscribed
+  end
+
+  # Lists to show as checked: current memberships with pending changes applied,
+  # or the default list for someone who isn't in Loops yet
+  def checked_list_ids(contact, lists, pending)
     list_ids = lists.map(&:loops_list_id)
 
-    if contact.nil?
+    if contact.nil? && pending.empty?
       default_id = ENV["DEFAULT_LOOPS_LIST_ID"].presence
       default_list = lists.find { |l| l.loops_list_id == default_id }
       return default_list&.is_public ? [ default_id ] : []
     end
 
-    memberships = contact["mailingLists"] || {}
+    memberships = (contact&.dig("mailingLists") || {}).transform_values { |on| on == true }
+    pending.each do |envelope|
+      memberships.merge!(envelope.payload.dig("mailingLists", "value") || {})
+    end
     list_ids.select { |id| memberships[id] == true }
   end
 
-  def record_changes(email_normalized:, request_id:, subscribed_change:, list_changes:, lists:)
-    provenance = { purpose: "subscription_management", initiated_by: "user" }
+  CHANGE_LOG_LIMIT = 25
 
-    if subscribed_change
-      LoopsContactChangeAudit.create!(
-        occurred_at: Time.current,
-        email_normalized: email_normalized,
-        field_name: "subscribed",
-        former_loops_value: subscribed_change[0],
-        new_loops_value: subscribed_change[1],
-        strategy: "upsert",
-        sync_source_id: nil,
-        is_self_service: true,
-        provenance: provenance,
-        request_id: request_id
-      )
+  # Recent changes to this email: pending and failed self-service requests, plus
+  # every audited change (from this page or from Hack Club's syncs)
+  def change_log(email_normalized)
+    entries = LoopsOutboxEnvelope.self_service.for_email(email_normalized)
+      .where(status: [ :queued, :failed ])
+      .order(created_at: :desc).limit(CHANGE_LOG_LIMIT)
+      .map { |envelope| { at: envelope.created_at, status: envelope.status, text: describe_envelope(envelope), self_service: true } }
+
+    LoopsContactChangeAudit.for_email(email_normalized)
+      .where("field_name = 'subscribed' OR field_name LIKE 'mailingList:%'")
+      .order(occurred_at: :desc).limit(CHANGE_LOG_LIMIT)
+      .each { |audit| entries << { at: audit.occurred_at, status: "done", text: describe_audit(audit), self_service: audit.is_self_service } }
+
+    entries.sort_by { |e| -e[:at].to_f }.first(CHANGE_LOG_LIMIT)
+  end
+
+  def describe_envelope(envelope)
+    parts = []
+    if envelope.payload.key?("subscribed")
+      parts << (envelope.payload.dig("subscribed", "value") == true ? "Subscribe to Hack Club emails" : "Unsubscribe from Hack Club emails")
     end
+    names = LoopsList.where(loops_list_id: (envelope.payload.dig("mailingLists", "value") || {}).keys).pluck(:loops_list_id, :name).to_h
+    (envelope.payload.dig("mailingLists", "value") || {}).each do |list_id, on|
+      parts << "#{on == true ? "Join" : "Leave"} #{names[list_id] || "a mailing list"}"
+    end
+    parts.join(", ")
+  end
 
-    list_changes.each do |list_id, subscribed|
-      # Mark the list as handled for this email either way, so the Airtable sync
-      # never re-adds someone who removed themselves here
-      begin
-        LoopsListSubscription.find_or_create_by!(email_normalized: email_normalized, list_id: list_id)
-      rescue ActiveRecord::RecordNotUnique
-        # Created concurrently by the sync pipeline
-      end
-
-      list = lists.find { |l| l.loops_list_id == list_id }
-      LoopsContactChangeAudit.create!(
-        occurred_at: Time.current,
-        email_normalized: email_normalized,
-        field_name: "mailingList:#{list_id}",
-        former_loops_value: !subscribed,
-        new_loops_value: subscribed,
-        strategy: subscribed ? "subscribe" : "unsubscribe",
-        sync_source_id: nil,
-        is_self_service: true,
-        provenance: provenance.merge(list: { id: list_id, name: list&.name, is_public: list&.is_public }),
-        request_id: request_id
-      )
+  def describe_audit(audit)
+    if audit.field_name == "subscribed"
+      audit.new_loops_value == true ? "Subscribed to Hack Club emails" : "Unsubscribed from Hack Club emails"
+    else
+      name = audit.provenance&.dig("list", "name") || LoopsList.find_by(loops_list_id: audit.field_name.delete_prefix("mailingList:"))&.name || "a mailing list"
+      audit.new_loops_value == true ? "Joined #{name}" : "Left #{name}"
     end
   end
 
   def success_message(contact, wants_subscribed, subscribed_changed)
-    return "Your mailing lists have been updated." unless subscribed_changed
-
-    if !wants_subscribed
-      "You've been unsubscribed from Hack Club emails."
+    message = if !subscribed_changed
+      "Your mailing list changes are saved."
+    elsif !wants_subscribed
+      "You're being unsubscribed from Hack Club emails."
     elsif contact.nil?
-      "You're subscribed to Hack Club emails!"
+      "You're being subscribed to Hack Club emails!"
     else
-      "Welcome back! You've been resubscribed to Hack Club emails."
+      "Welcome back! You're being resubscribed to Hack Club emails."
     end
+    "#{message} It takes effect within a minute."
   end
 end

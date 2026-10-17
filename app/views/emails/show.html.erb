@@ -237,16 +237,19 @@
             end
           %>
           <span class="field-name"><%= display_name %></span>
-          <% if audit.former_loops_value %>
+          <% unless audit.former_loops_value.nil? %>
             <span class="old-value"><%= audit.former_loops_value.is_a?(Hash) || audit.former_loops_value.is_a?(Array) ? JSON.pretty_generate(audit.former_loops_value) : audit.former_loops_value.to_s %></span>
           <% else %>
             <span class="null-value">null</span>
           <% end %>
           <span class="arrow">→</span>
-          <% if audit.new_loops_value %>
+          <% unless audit.new_loops_value.nil? %>
             <span class="new-value"><%= audit.new_loops_value.is_a?(Hash) || audit.new_loops_value.is_a?(Array) ? JSON.pretty_generate(audit.new_loops_value) : audit.new_loops_value.to_s %></span>
           <% else %>
             <span class="null-value">null</span>
+          <% end %>
+          <% if audit.is_self_service %>
+            <span class="null-value" title="<%= audit.provenance&.dig("purpose") %>">(self-service)</span>
           <% end %>
           <% if audit.sync_source_table_id && audit.sync_source_record_id %>
             <% 

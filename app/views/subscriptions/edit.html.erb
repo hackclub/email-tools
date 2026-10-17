@@ -12,10 +12,15 @@
   <div class="alert alert-error"><%= flash[:error] %></div>
 <% end %>
 
-<% subscribed = @contact.present? && @contact["subscribed"] != false %>
+<% subscribed = @subscribed %>
+<% new_contact = @contact.nil? && @pending.empty? %>
+
+<% if @pending.any? %>
+  <div class="alert alert-notice">Saving your latest changes. They take effect within a minute; refresh to see the result below.</div>
+<% end %>
 
 <p class="text-muted" style="margin-bottom: 32px; font-size: 16px;">
-  <% if @contact.nil? %>
+  <% if new_contact %>
     <strong><%= @email %></strong> isn't on Hack Club's email list yet. Subscribe below to start getting emails.
   <% elsif subscribed %>
     <strong><%= @email %></strong> is subscribed to Hack Club emails. Choose which lists you're on below.
@@ -27,7 +32,7 @@
 <%= form_with url: subscriptions_path, method: :patch, local: true do |form| %>
   <div class="subscription-option subscription-option-primary">
     <%= hidden_field_tag :subscribed, "0", id: nil %>
-    <%= check_box_tag :subscribed, "1", @contact.nil? || subscribed, id: "subscribed" %>
+    <%= check_box_tag :subscribed, "1", new_contact || subscribed, id: "subscribed" %>
     <label for="subscribed">
       Receive emails from Hack Club
       <span class="subscription-option-description">Uncheck to unsubscribe from all Hack Club emails.</span>
@@ -56,9 +61,35 @@
   <% end %>
 
   <div class="form-actions">
-    <% submit_label = if @contact.nil? then "Subscribe" elsif subscribed then "Save" else "Save & Resubscribe" end %>
+    <% submit_label = if new_contact then "Subscribe" elsif subscribed then "Save" else "Save & Resubscribe" end %>
     <%= form.submit submit_label, class: "btn btn-full" %>
   </div>
+<% end %>
+
+<% if @change_log.any? %>
+  <h2 style="font-size: 20px; margin: 32px 0 16px;">Recent changes</h2>
+  <ul class="change-log" style="list-style: none; padding: 0; margin: 0 0 32px;">
+    <% @change_log.each do |entry| %>
+      <li style="padding: 8px 0; border-bottom: 1px solid #e0e6ed;">
+        <span data-utc-time="<%= entry[:at].iso8601 %>" class="text-muted" style="font-size: 14px;"><%= entry[:at].strftime("%b %-d, %Y %-I:%M %p UTC") %></span>
+        <br>
+        <%= entry[:text] %>
+        <span class="text-muted" style="font-size: 14px;">
+          <% if entry[:status] == "queued" %>(saving…)
+          <% elsif entry[:status] == "failed" %>(failed, please try again)
+          <% else %>(<%= entry[:self_service] ? "you, on this page" : "Hack Club" %>)
+          <% end %>
+        </span>
+      </li>
+    <% end %>
+  </ul>
+  <script>
+    document.querySelectorAll('.change-log [data-utc-time]').forEach(function(el) {
+      el.textContent = new Date(el.getAttribute('data-utc-time')).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'
+      });
+    });
+  </script>
 <% end %>
 
 <div class="info-box">

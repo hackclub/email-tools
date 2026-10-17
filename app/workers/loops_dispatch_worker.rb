@@ -137,6 +137,15 @@ class LoopsDispatchWorker
 
         return if envelopes.empty?
 
+        # Self-service envelopes (a person changing their own subscriptions) are
+        # explicit intent, so each is sent on its own and skips the sync
+        # pipeline's idempotence filter, letting people rejoin lists they left
+        self_service_envelopes, envelopes = envelopes.partition(&:self_service?)
+        self_service_envelopes.each do |envelope|
+          dispatch_self_service_envelope(email_normalized, envelope)
+        end
+        return if envelopes.empty?
+
         # Determine sync_source for this email batch
         sync_source = envelopes.first&.sync_source || SyncSource.find_by(id: envelopes.first&.provenance&.dig("sync_source_id"))
 
@@ -527,6 +536,141 @@ class LoopsDispatchWorker
         )
       end
     end
+  end
+
+  # Send one self-service envelope. Payload fields:
+  # - "subscribed": { value: true/false }
+  # - "mailingLists": { value: { list_id => true/false } }
+  # - "source", "userGroup": only applied if the contact doesn't exist yet
+  # Diffs against the contact's live Loops state, sends only what changed, and
+  # after Loops confirms writes baselines, list subscriptions and one audit row
+  # per changed field. Errors mark the envelope failed without touching the
+  # email's other envelopes.
+  def dispatch_self_service_envelope(email_normalized, envelope)
+    contact = LoopsService.find_contact(email: email_normalized).first
+    desired = envelope.payload
+    loops_payload = {}
+    changes = []
+
+    if desired.key?("subscribed")
+      wanted = desired.dig("subscribed", "value") == true
+      current = contact.present? && contact["subscribed"] != false
+      if contact.nil? || wanted != current
+        loops_payload["subscribed"] = wanted
+        changes << { field_name: "subscribed", former: contact ? current : nil, new: wanted, strategy: "override" }
+      end
+    end
+
+    if contact.nil?
+      %w[source userGroup].each do |field|
+        value = desired.dig(field, "value")
+        next if value.blank?
+        loops_payload[field] = value
+        changes << { field_name: field, former: nil, new: value, strategy: "upsert" }
+      end
+    end
+
+    requested_lists = desired.dig("mailingLists", "value") || {}
+    if requested_lists.any?
+      ensure_catalog_has_lists(requested_lists.keys)
+      known = LoopsList.where(loops_list_id: requested_lists.keys).index_by(&:loops_list_id)
+      invalid_ids = requested_lists.keys - known.keys
+      if invalid_ids.any?
+        envelope.update_columns(
+          error: (envelope.error || {}).merge(
+            "validation_warnings" => {
+              "invalid_list_ids" => invalid_ids,
+              "message" => "Some mailing list IDs were not found in Loops catalog",
+              "occurred_at" => Time.current.iso8601
+            }
+          ),
+          updated_at: Time.current
+        )
+      end
+
+      memberships = contact&.dig("mailingLists") || {}
+      list_changes = {}
+      requested_lists.each do |list_id, wanted|
+        next unless known.key?(list_id)
+        wanted = wanted == true
+        current = memberships[list_id] == true
+        next if wanted == current
+        list_changes[list_id] = wanted
+        changes << { field_name: "mailingList:#{list_id}", former: current, new: wanted,
+                     strategy: wanted ? "subscribe" : "unsubscribe", list: known[list_id] }
+      end
+      loops_payload["mailingLists"] = list_changes if list_changes.any?
+    end
+
+    if loops_payload.empty?
+      envelope.update!(status: envelope.error&.dig("validation_warnings").present? ? :partially_sent : :ignored_noop)
+      return
+    end
+
+    response = LoopsService.update_contact(email: email_normalized, **loops_payload.symbolize_keys)
+    unless response && response["success"] == true
+      raise StandardError, "Loops API update did not succeed. Response: #{response.inspect}"
+    end
+    request_id = response["id"] || SecureRandom.uuid
+
+    ApplicationRecord.transaction do
+      now = Time.current
+      changes.each do |change|
+        field_name = change[:field_name]
+        list = change[:list]
+
+        if list
+          # Recorded either way, so the Airtable sync never re-adds someone
+          # who removed themselves from a list
+          begin
+            LoopsListSubscription.find_or_create_by!(email_normalized: email_normalized, list_id: list.loops_list_id)
+          rescue ActiveRecord::RecordNotUnique
+            # Created concurrently by the sync pipeline
+          end
+        else
+          LoopsFieldBaseline.find_or_create_baseline(email_normalized: email_normalized, field_name: field_name)
+                            .update_sent_value(value: change[:new], expires_in_days: 90)
+        end
+
+        audit_provenance = envelope.provenance.except("fields").merge(
+          "outbox_envelope_id" => envelope.id,
+          "loops_api_response" => response,
+          "loops_payload_sent" => loops_payload
+        )
+        if list
+          audit_provenance["list"] = { "id" => list.loops_list_id, "name" => list.name, "is_public" => list.is_public }
+        end
+
+        LoopsContactChangeAudit.create!(
+          occurred_at: now,
+          email_normalized: email_normalized,
+          field_name: field_name,
+          former_loops_value: change[:former],
+          new_loops_value: change[:new],
+          strategy: change[:strategy],
+          sync_source_id: nil,
+          is_self_service: true,
+          provenance: audit_provenance,
+          request_id: request_id
+        )
+      end
+
+      envelope.update!(status: envelope.error&.dig("validation_warnings").present? ? :partially_sent : :sent)
+    end
+  rescue => e
+    Rails.logger.error("LoopsDispatchWorker: Self-service envelope #{envelope.id} failed for #{email_normalized}: #{e.class} - #{e.message}")
+    envelope.update_columns(
+      status: :failed,
+      error: (envelope.error || {}).merge(
+        "message" => e.message,
+        "class" => e.class.name,
+        "stage" => "self_service",
+        "loops_payload_sent" => defined?(loops_payload) ? loops_payload : nil,
+        "backtrace" => e.backtrace&.first(10),
+        "occurred_at" => Time.current.iso8601
+      ),
+      updated_at: Time.current
+    )
   end
 
   # Hash email to integer for advisory lock (same as PrepareLoopsFieldsForOutboxJob)
