@@ -1,4 +1,4 @@
-require "ruby_llm/schema"
+require "schematist"
 
 module Ai
   module Prompts
@@ -32,7 +32,7 @@ module Ai
       # any Loops contact field (unknown ahead of time, including nested objects
       # like mailingLists), so it is a bare open object.
       #
-      # Deliberately NOT a RubyLLM::Schema subclass: that always emits
+      # Deliberately NOT a Schematist::Schema subclass: that always emits
       # `properties: {}` / `required: []`, and newer OpenAI models (gpt-5.6+)
       # honor an empty property list literally and return `{}`. A plain
       # `{ type: object, additionalProperties: true }` gets the full merge.

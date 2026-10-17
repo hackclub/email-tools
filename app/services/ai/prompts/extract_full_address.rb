@@ -1,4 +1,4 @@
-require "ruby_llm/schema"
+require "schematist"
 
 module Ai
   module Prompts
@@ -24,8 +24,7 @@ module Ai
       end
 
       # Schema definition - defines the structure of the response
-      class Schema < RubyLLM::Schema
-        strict false
+      class Schema < Schematist::Schema
         string :addressLine1, description: "Street address line 1"
         string :addressLine2, description: "Street address line 2 (optional)", required: false
         string :addressCity, description: "City name"

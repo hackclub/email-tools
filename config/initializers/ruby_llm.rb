@@ -1,5 +1,5 @@
-# Ensure ruby_llm/schema is loaded for Sidekiq workers
-require "ruby_llm/schema"
+# Ensure schematist (schema DSL used by ruby_llm 2.x) is loaded for Sidekiq workers
+require "schematist"
 
 RubyLLM.configure do |config|
   config.openai_api_key = ENV["OPENAI_API_KEY"]

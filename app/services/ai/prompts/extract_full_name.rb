@@ -1,4 +1,4 @@
-require "ruby_llm/schema"
+require "schematist"
 
 module Ai
   module Prompts
@@ -22,8 +22,7 @@ module Ai
       end
 
       # Schema definition - defines the structure of the response
-      class Schema < RubyLLM::Schema
-        strict false
+      class Schema < Schematist::Schema
         string :firstName, description: "The person's first name"
         string :lastName, description: "The person's last name"
       end
