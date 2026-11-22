@@ -5,7 +5,7 @@ module Ai
     MAX_RETRIES = 2
     # Merging is low-volume (alt-unsubscribe flow only) and correctness matters more
     # than cost here, so use a stronger model than the extraction default.
-    MODEL = ENV.fetch("LLM_MERGE_MODEL", "gpt-5.6-terra")
+    MODEL = ENV.fetch("LLM_MERGE_MODEL", "gpt-6.1-terra")
     REASONING_EFFORT = ENV.fetch("LLM_MERGE_REASONING_EFFORT", "high")
 
     # Merges contact data using parallel AI calls for consistency.

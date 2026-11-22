@@ -200,9 +200,9 @@ class Ai::ClientTest < ActiveSupport::TestCase
     assert_equal temp, cache_entry.request_json["temp"]
   end
 
-  test "default_model falls back to gpt-5.6-luna and honors LLM_MODEL" do
+  test "default_model falls back to gpt-6-luna and honors LLM_MODEL" do
     ENV.delete("LLM_MODEL")
-    assert_equal "gpt-5.6-luna", Ai::Client.default_model
+    assert_equal "gpt-6-luna", Ai::Client.default_model
     ENV["LLM_MODEL"] = "gpt-5-mini"
     assert_equal "gpt-5-mini", Ai::Client.default_model
   ensure
@@ -216,18 +216,34 @@ class Ai::ClientTest < ActiveSupport::TestCase
     assert_equal "minimal", Ai::Client.default_reasoning_effort("gpt-5.1")
     assert_equal "low", Ai::Client.default_reasoning_effort("gpt-5.6-luna")
     assert_equal "low", Ai::Client.default_reasoning_effort("gpt-5.4-nano")
+    assert_equal "low", Ai::Client.default_reasoning_effort("gpt-6-luna")
+    assert_equal "low", Ai::Client.default_reasoning_effort("gpt-6.1-terra")
     assert_equal "low", Ai::Client.default_reasoning_effort("gpt-6-astra")
     ENV["LLM_REASONING_EFFORT"] = "medium"
-    assert_equal "medium", Ai::Client.default_reasoning_effort("gpt-5.6-luna")
+    assert_equal "medium", Ai::Client.default_reasoning_effort("gpt-6-luna")
   ensure
     ENV.delete("LLM_REASONING_EFFORT")
   end
 
-  test "structured_generate builds an OpenAI chat with model, schema, temperature and reasoning effort" do
+  test "supports_temperature? returns false for GPT-5+, GPT-6+ and o-series models and true for others" do
+    %w[
+      gpt-5 gpt-5-mini gpt-5.1 gpt-5.6-luna gpt-5.6-terra
+      gpt-6 gpt-6-luna gpt-6.1-terra gpt-7-mini
+      o1 o1-mini o3 o3-mini o4-mini
+    ].each do |model|
+      assert_not Ai::Client.supports_temperature?(model), "Expected #{model} not to support temperature"
+    end
+
+    %w[gpt-4 gpt-4o gpt-4o-mini gpt-4.1 gpt-4.1-mini gpt-3.5-turbo].each do |model|
+      assert Ai::Client.supports_temperature?(model), "Expected #{model} to support temperature"
+    end
+  end
+
+  test "structured_generate omits temperature for default gpt-6-luna and passes schema and reasoning effort" do
     fake_chat = Class.new do
-      attr_reader :schema, :temperature, :thinking
+      attr_reader :schema, :temperature, :thinking, :temperature_set
       def with_schema(schema) = tap { @schema = schema }
-      def with_temperature(temp) = tap { @temperature = temp }
+      def with_temperature(temp) = tap { @temperature_set = true; @temperature = temp }
       def with_thinking(**options) = tap { @thinking = options }
       def ask(_prompt) = Struct.new(:parsed).new({ "firstName" => "A", "lastName" => "B" })
     end.new
@@ -238,9 +254,80 @@ class Ai::ClientTest < ActiveSupport::TestCase
         assert_equal({ "firstName" => "A", "lastName" => "B" }, result)
       end
     end
-    assert_equal({ model: "gpt-5.6-luna", provider: :openai, assume_model_exists: true }, captured)
+    assert_equal({ model: "gpt-6-luna", provider: :openai, assume_model_exists: true }, captured)
     assert_equal Ai::Prompts::ExtractFullName::Schema, fake_chat.schema
-    assert_equal 0, fake_chat.temperature
+    assert_nil fake_chat.temperature
+    assert_not fake_chat.temperature_set
     assert_equal({ effort: :low }, fake_chat.thinking)
+  end
+
+  test "structured_generate omits temperature for gpt-5.x, gpt-6.x and o-series models" do
+    %w[gpt-5.6-luna gpt-5.6-terra gpt-6-luna gpt-6.1-terra o3-mini].each do |model|
+      fake_chat = Class.new do
+        attr_reader :temperature_set
+        def with_schema(_schema) = self
+        def with_temperature(_temp) = tap { @temperature_set = true }
+        def with_thinking(**_options) = self
+        def ask(_prompt) = Struct.new(:parsed).new({ "ok" => true })
+      end.new
+      RubyLLM.stub(:chat, ->(**_kwargs) { fake_chat }) do
+        Ai::Client.stub(:global_rate_limiter, Struct.new(:x) { def acquire! = nil }.new(nil)) do
+          Ai::Client.structured_generate(prompt: "p", schema_class: Ai::Prompts::ExtractFullName::Schema, model: model, temp: 0)
+        end
+      end
+      assert_not fake_chat.temperature_set, "Expected no temperature sent for #{model}"
+    end
+  end
+
+  test "structured_generate sends temperature for models that accept it" do
+    fake_chat = Class.new do
+      attr_reader :temperature, :temperature_set
+      def with_schema(_schema) = self
+      def with_temperature(temp) = tap { @temperature_set = true; @temperature = temp }
+      def with_thinking(**_options) = self
+      def ask(_prompt) = Struct.new(:parsed).new({ "firstName" => "A", "lastName" => "B" })
+    end.new
+    RubyLLM.stub(:chat, ->(**_kwargs) { fake_chat }) do
+      Ai::Client.stub(:global_rate_limiter, Struct.new(:x) { def acquire! = nil }.new(nil)) do
+        Ai::Client.structured_generate(
+          prompt: "p",
+          schema_class: Ai::Prompts::ExtractFullName::Schema,
+          model: "gpt-4.1-mini",
+          temp: 0
+        )
+      end
+    end
+    assert fake_chat.temperature_set
+    assert_equal 0, fake_chat.temperature
+  end
+
+  test "ruby_llm renders gpt-6-luna and gpt-6.1-terra payloads without temperature and with reasoning effort" do
+    original_key = RubyLLM.config.openai_api_key
+    RubyLLM.config.openai_api_key = "sk-test-stub"
+
+    extraction_chat = RubyLLM.chat(model: "gpt-6-luna", provider: :openai, assume_model_exists: true)
+      .with_schema(Ai::Prompts::ExtractFullName::Schema)
+      .with_thinking(effort: :low)
+    extraction_payload = extraction_chat.render
+    assert_equal "gpt-6-luna", extraction_payload[:model]
+    assert_not extraction_payload.key?(:temperature)
+    assert_equal({ effort: "low" }, extraction_payload[:reasoning])
+
+    merge_chat = RubyLLM.chat(model: "gpt-6.1-terra", provider: :openai, assume_model_exists: true)
+      .with_schema(Ai::Prompts::MergeContacts::Schema)
+      .with_thinking(effort: :high)
+    merge_payload = merge_chat.render
+    assert_equal "gpt-6.1-terra", merge_payload[:model]
+    assert_not merge_payload.key?(:temperature)
+    assert_equal({ effort: "high" }, merge_payload[:reasoning])
+
+    legacy_chat = RubyLLM.chat(model: "gpt-4.1-mini", provider: :openai, assume_model_exists: true)
+      .with_schema(Ai::Prompts::ExtractFullName::Schema)
+      .with_temperature(0)
+    legacy_payload = legacy_chat.render
+    assert_equal "gpt-4.1-mini", legacy_payload[:model]
+    assert_equal 0, legacy_payload[:temperature]
+  ensure
+    RubyLLM.config.openai_api_key = original_key
   end
 end

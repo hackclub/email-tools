@@ -3,13 +3,17 @@ require_relative "../../lib/rate_limiter"
 module Ai
   class Client
     # Default model for structured extraction. See config/initializers/ruby_llm.rb.
-    DEFAULT_MODEL = "gpt-5.6-luna"
+    DEFAULT_MODEL = "gpt-6-luna"
 
     # Older GPT-5 family models (gpt-5, gpt-5-mini/nano, gpt-5.1, gpt-5.2) use
     # "minimal" as their lowest reasoning effort; gpt-5.4+ / gpt-5.6 / gpt-6 use
-    # "none".."max". "low" was the best-judged setting for gpt-5.6-luna on our
-    # real address prompts ("none" dropped meaningful hyphens, "medium" no better).
+    # "none".."max". "low" was chosen for gpt-6-luna after a Nov 2026 eval on
+    # real prod prompts.
     LEGACY_GPT5_MODEL = /\Agpt-5(\.[12])?(-|\z)/
+
+    # OpenAI reasoning models (GPT-5+, GPT-6+, o-series) reject explicit
+    # temperature parameters (HTTP 400); omit temperature so OpenAI uses its default.
+    NO_TEMPERATURE_MODEL = /\A(?:gpt-(?:[5-9]|[1-9]\d+)(?:\.\d+)?|o\d+)(?:-|\z)/i
 
     def self.default_model
       ENV["LLM_MODEL"].presence || DEFAULT_MODEL
@@ -18,6 +22,10 @@ module Ai
     def self.default_reasoning_effort(model)
       ENV["LLM_REASONING_EFFORT"].presence ||
         (model.to_s.match?(LEGACY_GPT5_MODEL) ? "minimal" : "low")
+    end
+
+    def self.supports_temperature?(model)
+      !model.to_s.strip.match?(NO_TEMPERATURE_MODEL)
     end
 
     # Get the global rate limiter (lazy initialization)
@@ -48,13 +56,15 @@ module Ai
         # Use provided model or default
         model_to_use = model || default_model
 
-        # assume_model_exists: newer OpenAI models (e.g. gpt-5.6-*) are not in the
+        # assume_model_exists: newer OpenAI models (e.g. gpt-6.1-terra) are not in the
         # bundled ruby_llm model registry yet; we always talk to OpenAI anyway.
         chat = RubyLLM.chat(model: model_to_use, provider: :openai, assume_model_exists: true)
           .with_schema(schema_class)
 
-        # Set temperature (ruby_llm normalizes this to 1.0 for GPT-5 family reasoning models)
-        chat = chat.with_temperature(temp)
+        # Only send temperature to models that accept it; OpenAI GPT-5+/6+ and o-series
+        # reasoning models reject explicit temperature parameters with HTTP 400.
+        send_temp = !temp.nil? && supports_temperature?(model_to_use)
+        chat = chat.with_temperature(temp) if send_temp
 
         # Set reasoning effort (all current OpenAI GPT-5+ models accept this)
         effort = reasoning_effort || default_reasoning_effort(model_to_use)
@@ -68,7 +78,7 @@ module Ai
 
         Rails.logger.info(
           "Ai::Client.structured_generate: model=#{model_to_use}, " \
-          "effort=#{effort}, temp=#{temp}, " \
+          "effort=#{effort}, temp=#{send_temp ? temp : "default"}, " \
           "latency_ms=#{latency_ms}, cache=miss"
         )
 

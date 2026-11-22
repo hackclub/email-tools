@@ -55,10 +55,10 @@ AIRTABLE_PERSONAL_ACCESS_TOKEN=
 LOOPS_API_KEY=
 # required - for splitting addresses and full names into individual parts, and for alt unsubscribe contact merging
 OPENAI_API_KEY=
-# optional - OpenAI model / reasoning effort for name+address splitting (default: gpt-5.6-luna / low)
+# optional - OpenAI model / reasoning effort for name+address splitting (default: gpt-6-luna / low)
 LLM_MODEL=
 LLM_REASONING_EFFORT=
-# optional - OpenAI model / reasoning effort for alt unsubscribe contact merging (default: gpt-5.6-terra / high)
+# optional - OpenAI model / reasoning effort for alt unsubscribe contact merging (default: gpt-6.1-terra / high)
 LLM_MERGE_MODEL=
 LLM_MERGE_REASONING_EFFORT=
 # optional - ID of the mailing list to automatically add all new contacts to, ex. "Announcements"

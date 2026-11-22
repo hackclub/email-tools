@@ -172,7 +172,7 @@ module Ai
         Ai::Client.define_singleton_method(:structured_generate, original_method)
       end
       assert_equal 3, captured.length
-      assert_equal "gpt-5.6-terra", captured.first[:model]
+      assert_equal "gpt-6.1-terra", captured.first[:model]
       assert_equal "high", captured.first[:reasoning_effort]
     end
   end
