@@ -42,7 +42,8 @@ module Ai
     # Generate structured output using RubyLLM
     # @param prompt [String] The prompt to send to the LLM
     # @param schema_class [Class] RubyLLM schema class for structured output
-    # @param temp [Float] Temperature for generation (default: 0)
+    # @param temp [Float] Temperature for generation (default: 0); not sent to models
+    #   where supports_temperature? is false (OpenAI reasoning models)
     # @param model [String] Optional model name (defaults to Ai::Client.default_model)
     # @param reasoning_effort [String] Optional reasoning effort (e.g., "minimal", "low", "high")
     # @return [Hash] Parsed structured data hash
