@@ -53,7 +53,7 @@ module AuthenticationService
       # The error is raised only after the transaction commits, so a counted
       # failed attempt is never rolled back by the exception.
       error = OtpVerification.transaction do
-        check_and_consume_otp!(email_normalized, code)
+        check_and_consume_otp(email_normalized, code)
       end
 
       raise error if error
@@ -64,7 +64,7 @@ module AuthenticationService
     # Runs inside a transaction. Locks the newest active OTP row for the email,
     # then checks it, counts the attempt or marks it used, all under that lock.
     # Returns nil on success, or the exception to raise after commit.
-    def check_and_consume_otp!(email_normalized, code)
+    def check_and_consume_otp(email_normalized, code)
       # FOR UPDATE: a concurrent request waits here until this transaction
       # commits, then Postgres re-checks the active scope on the updated row.
       otp_verification = OtpVerification.active
@@ -75,7 +75,7 @@ module AuthenticationService
 
       return InvalidOtp.new("Invalid or expired OTP") unless otp_verification
 
-      # Check attempt lockout (max 5 attempts)
+      # Check attempt lockout (MAX_OTP_ATTEMPTS)
       if otp_verification.attempts >= MAX_OTP_ATTEMPTS
         return InvalidOtp.new("Too many failed attempts. Please request a new OTP code.")
       end
@@ -106,7 +106,7 @@ module AuthenticationService
 
       nil
     end
-    private :check_and_consume_otp!
+    private :check_and_consume_otp
 
     def create_session(email)
       email_normalized = EmailNormalizer.normalize(email)

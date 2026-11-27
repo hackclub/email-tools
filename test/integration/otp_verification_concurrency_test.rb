@@ -110,7 +110,7 @@ class OtpVerificationConcurrencyTest < ActionDispatch::IntegrationTest
   private
 
   def cleanup
-    @emails.each do |email|
+    Array(@emails).each do |email|
       REDIS_FOR_RATE_LIMITING.del("rate:otp:#{email}")
       OtpVerification.where(email_normalized: email).delete_all
       AuthenticatedSession.where(email_normalized: email).delete_all
